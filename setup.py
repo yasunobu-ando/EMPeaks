@@ -13,7 +13,7 @@ print(find_packages())
     
 setup(
     name='EMPeaks',
-    version='1.0.0',
+    version='2.0.0',
     description='high-throughput spectrum peak modeling tools by using Spectrum adapted EM algorithms',
     long_description=readme,
     author='Yasunobu ANDO',
