@@ -2,8 +2,8 @@
 # Copyright © 2020 National Institute of Advanced Industrial Science and Technology (AIST)
 
 
-from ._test_data import TestData
-from .._spectrum_adapted_em import SpectrumAdaptedEM
+from EMPeaks.GaussianMixture.Tests._test_data import TestData
+from EMPeaks.GaussianMixture._spectrum_adapted_em import SpectrumAdaptedEM
 
 
 def test_spectrum_adapted_em(N=10000, sampling=1):
@@ -19,3 +19,7 @@ def test_spectrum_adapted_em(N=10000, sampling=1):
     opt.plot_fitting_summary()
 
     return print("finished.")
+
+
+if __name__ =="__main__":
+    test_spectrum_adapted_em(sampling=10)
