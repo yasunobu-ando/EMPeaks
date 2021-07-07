@@ -654,7 +654,7 @@ def main():
     lmm = PseudoVoigtMixtureModel()
     test = PseudoVoigtMixtureModel()
     test.model[0].x0 = -100
-    test.model[1].x0 = +100
+    test.model[1].x0 = +150
 
     x = np.arange(test.x_min, test.x_max)
     y = test.predict(x) * 20000

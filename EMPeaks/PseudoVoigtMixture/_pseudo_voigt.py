@@ -1,8 +1,6 @@
 from scipy import optimize
 from scipy.stats import norm
 from scipy.stats import cauchy
-# from scipy.integrate import simps
-# import matplotlib.pyplot as plt
 import numpy as np
 
 
