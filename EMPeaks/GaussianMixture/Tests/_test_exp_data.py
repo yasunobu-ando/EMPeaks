@@ -2,7 +2,7 @@
 # Copyright © 2020 National Institute of Advanced Industrial Science and Technology (AIST)
 
 
-from .._spectrum_adapted_em import SpectrumAdaptedEM
+from EMPeaks.GaussianMixture import SpectrumAdaptedEM
 from EMPeaks import file_io
 
 

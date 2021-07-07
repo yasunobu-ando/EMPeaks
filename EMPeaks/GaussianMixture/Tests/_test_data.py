@@ -42,3 +42,7 @@ class TestData:
     def plot(self, dpi=100):
         fig = plt.figure(dpi=dpi)
         plt.scatter(self.data2D[0], self.data2D[1], c='gray', marker='o')
+
+
+if __name__ == "__main__":
+    TestData(100).show_info()

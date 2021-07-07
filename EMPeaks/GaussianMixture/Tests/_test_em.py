@@ -1,8 +1,8 @@
 # License: BSD-3-clause
 # Copyright © 2020 National Institute of Advanced Industrial Science and Technology (AIST)
 
-from ._test_data import TestData
-from .._em import EM
+from EMPeaks.GaussianMixture.Tests._test_data import TestData
+from EMPeaks.GaussianMixture._em import EM
 
 
 def test_em(N=10000, sampling=1):
@@ -18,3 +18,11 @@ def test_em(N=10000, sampling=1):
     opt.plot_fitting_summary()
 
     return print("\nfinished.")
+
+
+def main():
+    test_em(sampling=5)
+
+
+if __name__ == '__main__()':
+    main()
