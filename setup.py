@@ -14,7 +14,7 @@ print(find_packages())
 setup(
     name='EMPeaks',
     version='1.0.0',
-    description='X-ray spectrum peak analysis by using Spectrum adapted EM algorithms',
+    description='high-throughput spectrum peak modeling tools by using Spectrum adapted EM algorithms',
     long_description=readme,
     author='Yasunobu ANDO',
     author_email='yasunobu.ando@aist.go.jp',
