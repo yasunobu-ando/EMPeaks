@@ -1,24 +1,26 @@
-# -*- coding: utf-8 -*-
-from setuptools import setup, find_packages
+import setuptools
 
-with open('README.rst') as f:
-    readme = f.read()
+with open("README.md", "r", encoding="utf-8") as fh:
+    long_description = fh.read()
 
-with open('LICENSE') as f:
-    license = f.read()
-
-print(find_packages())    
-#quit()
-    
-setup(
-    name='EMPeaks',
-    version='1.0.0',
+setuptools.setup(
+    name="EMPeaks",
+    version="1.0.0",
+    author="Yasunobu Ando",
+    author_email="yasunobu.ando@aist.go.jp",
     description='high-throughput spectrum peak modeling tools by using Spectrum adapted EM algorithms',
-    long_description=readme,
-    author='Yasunobu ANDO',
-    author_email='yasunobu.ando@aist.go.jp',
-    license=license,
-    install_requires=['numpy', 'scipy', 'matplotlib'],
-    packages=find_packages(exclude=('tests', 'docs'))
+    long_description=long_description,
+    long_description_content_type="text/markdown",
+    # url="https://github.com/pypa/sampleproject",
+    # project_urls={
+    #    "Bug Tracker": "https://github.com/pypa/sampleproject/issues",
+    # },
+    classifiers=[
+        "Programming Language :: Python :: 3",
+        "License :: OSI Approved :: BSD-3-clause License",
+        "Operating System :: OS Independent",
+    ],
+    package_dir={"": "EMPeaks"},
+    packages=setuptools.find_packages(where="EMpeaks"),
+    python_requires=">=3.6",
 )
-
