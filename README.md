@@ -39,6 +39,7 @@ In version 1.0.0, Gaussian　Mixture　Model (GMM) is only available.
         
     def ani_gmm_history(self, dx=0.05, dpi=100, save=False, interval=100, repeat_delay=1500):
 
+## Examples
 We prepared three examples to test this package.
 1. `test_em(N: int)`
 ```python 
@@ -58,5 +59,5 @@ from EMPeaks import GaussianMixture
 test = GaussianMixture.Tests
 test.test_exp_data('GFET0126_25V_C1s.txt', sampling=5)
 ```
-
 ---------------
+&copy; 2020-2021 National Institute of Advanced Industrial Science and Technology (AIST)
