@@ -17,10 +17,10 @@ setuptools.setup(
     # },
     classifiers=[
         "Programming Language :: Python :: 3",
-        "License :: OSI Approved :: BSD-3-clause License",
+        "License :: OSI Approved :: BSD License",
         "Operating System :: OS Independent",
     ],
     package_dir={"": "EMPeaks"},
-    packages=setuptools.find_packages(where="EMpeaks"),
+    packages=setuptools.find_packages(where="EMPeaks"),
     python_requires=">=3.6",
 )
