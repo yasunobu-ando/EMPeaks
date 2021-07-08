@@ -9,7 +9,7 @@ Please refer the following paper when using this package:
 In version 1.0.0, Gaussian　Mixture　Model (GMM) is only available.
 
 ### Brief Explanation
-class: GaussianMixture(data2d, K=2):
+**class: GaussianMixture(data2d, K=2):**
 
     class for GMM object.
     parameters:
@@ -18,7 +18,7 @@ class: GaussianMixture(data2d, K=2):
     integer          K: number of Gaussians
     _______________________________________
 
-class SpectrumAdaptedEM(GaussianMixture)(data2d, K=2, max_iter=500):
+**class SpectrumAdaptedEM(GaussianMixture)(data2d, K=2, max_iter=500):**
     
     Class for Spectrum Adapted EM algorithm opject.
     parameters:
