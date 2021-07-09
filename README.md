@@ -3,61 +3,53 @@ EMPeaks
 
 This package is for high-throughput peak analysis by using Spectrum Adapted EM algorithm.
 Please refer the following paper when using this package:
-[Sci. Tech. Adv. Mater. 20, 733-735 (2019).](https://www.tandfonline.com/doi/full/10.1080/14686996.2019.1620123)
+[Sci. Tech. Adv. Mater. 20, 733-735 (2019).](https://www.tandfonline.com/doi/full/10.1080/14686996.2019.1620123);
+[STAM-method, in press]()
 
-## version 1.0.x
-In version 1.0.x, Gaussian　Mixture　Model (GMM) is only available.
+## version 2.0.x
+In version 2.0.x, Gaussian Mixture Model (GMM), Lorentzian Mixture Model (LMM), 
+Pseudo Voigt Mixture model (PVMM), and Doniach-Sunijic Miture model (DSMM).
+In principle, these combination models are also available but not implemented yet.
 
-### Brief Explanation
-**class: GaussianMixture(data2d, K=2):**
-
-    class for GMM object.
-    parameters:
-    _______________________________________
-    numpy_array data2d: [energy, intensity]
-    integer          K: number of Gaussians
-    _______________________________________
-
-**class SpectrumAdaptedEM(GaussianMixture)(data2d, K=2, max_iter=500):**
-    
-    Class for Spectrum Adapted EM algorithm opject.
-    parameters:
-    ______________________________________________________
-    integer max_iter: max iteration for E-step and M-step.
-    ______________________________________________________
-
-    def fit(iter_log=False, sampling=1):
-        fitting GMM to the data2d via EM algorithm.
-        parameters:
-            boolean iter_log: switch to write the iteration log.
-            integer sampling: sampling number for initial parameters. 
-                              The largest likelihood　model in samples is selected.
-
-    def plot_fitting_summary(self, dpi=100, save=False):
-    
-    def plot_param_history(self, dpi=100, save=False):
-        
-    def ani_gmm_history(self, dx=0.05, dpi=100, save=False, interval=100, repeat_delay=1500):
-
-## Examples
-We prepared three examples to test this package.
-1. `test_em(N: int)`
-```python 
-    from EMPeaks import GaussianMixture
-    test = GaussianMixture.Tests
-    test.test_em(N=10000,sampling=5)
-```
-2. `test_spectrum_adapted_em(N: int)`
+From this version, each model has the same functions but differ from version 1, 
+though functions and classes in version 1 still work. Sample codes to import 
+these models are followings for instance:
 ```python
 from EMPeaks import GaussianMixture
-test = GaussianMixture.Tests
-test.test_spectrum_adapted_em(N=10000,sampling=5)
+gmm = GaussianMixture.GaussianMixtureModel(K=3)
 ```
-3. `test_exp_data()`
+```python
+from EMPeaks import LorentzianMixture
+lmm = LorentzianMixture.LorentzianMixtureModel(K=2)
+```
+Mixture model object includes a single model object.
+These packages also have a class 
+for single Gaussian, Lorentizan, pseudo Voigt, and DS models.
+For example,
 ```python
 from EMPeaks import GaussianMixture
-test = GaussianMixture.Tests
-test.test_exp_data('GFET0126_25V_C1s.txt', sampling=5)
+gm = GaussianMixture.Gaussian(x_min=-100, x_max=100, sigma_min=0.1, sigma_max=10)
 ```
+
+In version 2, we do not implement the class for optimization. 
+Instead,all model classes has functions to optimize the parameters 
+to fit the target data.
+```python
+from EMPeaks import GaussianMixture
+import numpy as np
+
+x = np.load("energy.dat")
+y = np.load("intensity.dat")
+
+gmm = GaussianMixture.GaussianMixtureModel(K=3)
+gmm.fit(x, y)
+# if you want to sample some initial guess and choose the highest likelihood model,
+gmm.sampling(x, y, trial=10)
+```
+After fitting, you can plot both raw data and fitted model as follows:
+```python
+gmm.plot(x, y)
+```
+
 ---------------
 &copy; 2020-2021 National Institute of Advanced Industrial Science and Technology (AIST)
