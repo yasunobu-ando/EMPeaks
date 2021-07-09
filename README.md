@@ -5,8 +5,8 @@ This package is for high-throughput peak analysis by using Spectrum Adapted EM a
 Please refer the following paper when using this package:
 [Sci. Tech. Adv. Mater. 20, 733-735 (2019).](https://www.tandfonline.com/doi/full/10.1080/14686996.2019.1620123)
 
-## version 1.0.0
-In version 1.0.0, Gaussian　Mixture　Model (GMM) is only available.
+## version 1.0.x
+In version 1.0.x, Gaussian　Mixture　Model (GMM) is only available.
 
 ### Brief Explanation
 **class: GaussianMixture(data2d, K=2):**
