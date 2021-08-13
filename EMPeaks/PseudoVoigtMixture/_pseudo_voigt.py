@@ -39,7 +39,7 @@ class PseudoVoigt:
             + (1 - self.eta) / self._Z(self.x0, self.gamma) * cauchy.pdf(x, self.x0, self.gamma / 2.0)
 
     def _Z(self, x0, gamma):
-        """ Normaization factor of Lorentzian component. """
+        """ Normalization factor of Lorentzian component. """
         _Z = 1.0 / np.pi * np.arctan((self.x_max - x0) / (gamma / 2.0))
         _Z += - 1.0 / np.pi * np.arctan((self.x_min - x0) / (gamma / 2.0))
         return _Z
@@ -58,7 +58,8 @@ class PseudoVoigt:
         return self.LL
 
     def maximum_likelihood_estimation(self, x, intensity, max_iter=5000, eps=1e-8):
-        self.iterative_optimization(x, intensity, max_iter=max_iter, eps=eps)
+        # self.full_optimization(x, intensity, max_iter=max_iter, eps=eps)
+        self.conditional_max(x, intensity, max_iter=max_iter, eps=eps)
         return
 
     def _LogZ_m(self, m, g):
@@ -147,7 +148,7 @@ class PseudoVoigt:
         return
 
     def _cm_step_x0_gamma(self, x, intensity):
-        N = 100
+        N = 10
         _interval_m = (self.x_min, self.x_max)
         _interval_g = (0.1, self.x_max - self.x_min)
 
@@ -188,31 +189,34 @@ class PseudoVoigt:
         self.eta = eta[np.argmax(np.array(ll))]
         return
 
-    def adapted_ecm(self, x, intensity, eps, max_iter):
-        print("### Start MLE of PseudoVoigt component via adapted ECM algorithm.")
-        eps_x0_gamma = eps
-        self.x0 = np.sum(x * intensity)/np.sum(intensity)
-        self.gamma = np.sum(x**2 * intensity)/np.sum(intensity)
-        self.eta = 1.0
-        ll = [self._LL(x, intensity)]
-        for i in range(max_iter):
-            for j in range(max_iter):
-                self._e_step(x)
-                self._cm_step_x0_gamma(x, intensity)
-                ll.append(self._LL(x, intensity))
-                if (ll[-1] - ll[-2]) / np.abs(ll[-2]) < eps_x0_gamma:
-                    break
-
-            self._cm_step_eta(x, intensity)
-            ll.append(self._LL(x, intensity))
-            print("     iteration {:}, LL: {:}, residual: {:}".format(i, ll[-1], (ll[-1]-ll[-2]) / np.abs(ll[-2])))
-            if (ll[-1] - ll[-2])/np.abs(ll[-2]) < eps:
-                return
-
-        print("Does not converged.")
+    def conditional_max(self, x, intensity, eps, max_iter):
+#        print("### Start MLE of Pseudo-Voigt component via adapted ECM algorithm.")
+#        eps_x0_gamma = eps
+#        self.x0 = np.sum(x * intensity)/np.sum(intensity)
+#        self.gamma = np.sum(x**2 * intensity)/np.sum(intensity)
+#        self.eta = 1.0
+#        ll = [self._LL(x, intensity)]
+        self._e_step(x)
+        self._cm_step_x0_gamma(x, intensity)
+        self._cm_step_eta(x, intensity)
+#        for i in range(max_iter):
+#            for j in range(max_iter):
+#                self._e_step(x)
+#                self._cm_step_x0_gamma(x, intensity)
+#                ll.append(self._LL(x, intensity))
+#                if (ll[-1] - ll[-2]) / np.abs(ll[-2]) < eps_x0_gamma:
+#                    break
+#
+#            self._cm_step_eta(x, intensity)
+#            ll.append(self._LL(x, intensity))
+#            print("     iteration {:}, LL: {:}, residual: {:}".format(i, ll[-1], (ll[-1]-ll[-2]) / np.abs(ll[-2])))
+#            if (ll[-1] - ll[-2])/np.abs(ll[-2]) < eps:
+#                return
+#
+#        print("Does not converged.")
         return
 
-    def iterative_optimization(self, x, intensity, eps, max_iter):
+    def full_optimization(self, x, intensity, eps, max_iter):
         #print("### Start MLE of PseudoVoigt component via iterative optimization between (x0, gamma) and eta.")
 
         def func_ll(param):
@@ -226,17 +230,19 @@ class PseudoVoigt:
             self.eta = eta
             return - self._LL(x, intensity)
 
-        self.x0 = np.sum(x * intensity)/np.sum(intensity)
-        self.gamma = np.sqrt(2.0 * np.log(2.0) * np.sum(x ** 2 * intensity) / np.sum(intensity))
-        self.eta = 0.5
+        #self.x0 = np.sum(x * intensity)/np.sum(intensity)
+        #self.gamma = np.sqrt(2.0 * np.log(2.0) * np.sum(x ** 2 * intensity) / np.sum(intensity))
+        #self.eta = 0.5
 
         init = [self.x0, self.gamma]
         ll = [self._LL(x, intensity)]
-        eta_grid = np.arange(0, 1.0, 0.05)
+        eta_grid = np.arange(0, 1.0, 0.01)
         for i in range(max_iter):
-            info = optimize.minimize(func_ll, x0=init, bounds=[(-200, 200), (0.1, 2000)], method='L-BFGS-B')
+            info = optimize.minimize(func_ll, x0=init,
+                                     bounds=[(self.x_min, self.x_max), (self.gamma_min, self.gamma_max)],
+                                     method='L-BFGS-B')
             init = info['x']
-            index = np.argmin([func_eta(eta, init) for eta in eta_grid])
+            index = np.nanargmin([func_eta(eta, init) for eta in eta_grid])
             self.eta = eta_grid[index]
             #info = optimize.minimize(func_eta, x0=[self.eta], args=(info['x']), bounds=[(0, 1.0)], method='L-BFGS-B')
             #self.eta = info['x']

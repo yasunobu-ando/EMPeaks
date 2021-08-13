@@ -13,8 +13,8 @@ class Lorentzian:
 
     def set_param(self, **param):
         """
-        Xp_min, Xp_maxの代償関係についてのチェックは未実装
-        Ea_min, Ea_maxの代償関係についてのチェックは未実装
+        Xp_min, Xp_maxの大小関係についてのチェックは未実装
+        Ea_min, Ea_maxの大小関係についてのチェックは未実装
         """
         if not param:
             return self
@@ -95,7 +95,9 @@ class Lorentzian:
         return optimize.brentq(_f, _interval_g[0], _interval_g[1])
 
     def maximum_likelihood_estimation(self, x, intensity, n_partition_x0=100):
+        #print('MLE via root search method.')
         #self.root_search(x, intensity, n_partition_x0)
+        #print('MLE via bfgs method.')
         self.minimize_bfgs(x, intensity)
         return
 

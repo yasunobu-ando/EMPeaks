@@ -286,11 +286,11 @@ class GaussianMixtureModel:
             print('Maximum Log-Likelihood is obtained in trial {:3d}'.format(index_best))
         elif criteria is 'rmse':
             index_sucess = ~np.isnan(hist_RMSE)
-            index_best = int(np.argmin(hist_RMSE[index_sucess]))
+            index_best = int(np.nanargmin(hist_RMSE[index_sucess]))
             print(index_best)
             print('Minimum RMSE is obtained in trial {:3d}'.format(index_best))
         else:
-            index_best = 0.0
+            index_best = 0
 
         info = {'index_best': index_best,
                 'LL_hist': hist_LL,
@@ -328,7 +328,7 @@ class GaussianMixtureModel:
         ll = 0.0
         residual = 0.0
 
-        print("<< Starting TSDC fitting via Adapted EM Algorithm. >>")
+        print("<< Start fitting via Adapted EM Algorithm. >>")
         tmp_it = range(max_iter)
         t1 = time.time()
 
@@ -372,8 +372,8 @@ class GaussianMixtureModel:
             print('   LogLikelihood:      {:12.8e}\n'
                   '        residual:       {:12.8e}'.format(ll, residual))
 
-        #rmse = self.leastsq_for_normalization_factor(x, intensity, stdout)
-        self.N_tot = np.sum(intensity)
+        rmse = self.leastsq_for_normalization_factor(x, intensity, stdout)
+        #self.N_tot = np.sum(intensity)
         param = self.export_param()
 
         run_info = {
@@ -384,7 +384,7 @@ class GaussianMixtureModel:
             'LL_hist': LL_hist,
             'LL_residual': residual,
             'LL_residual_hist': res_hist,
-            'RMSE': np.nan#rmse
+            'RMSE': rmse
         }
         if stdout is True:
             print('Estimated model parameters and scores are following:')
@@ -563,8 +563,8 @@ class GaussianMixtureModel:
 
         ax.plot(x, self.predict(x) * self.N_tot, 'black', linewidth=3, ls='--', label='full_model')
         ax.scatter(x_data, intensity, label='data')
-        ax.set_xlabel('Temperature [K]')
-        ax.set_ylabel('Current Intensity [nA]')
+        ax.set_xlabel('Energy [eV]')
+        ax.set_ylabel('Intensity')
         ax.legend()
         plt.show()
         return

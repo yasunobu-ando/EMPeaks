@@ -17,12 +17,13 @@ class DoniachSunjicMixtureModel(GaussianMixtureModel):
                 'none' : No background model is included.
 
     """
-    def __init__(self, K=2, x_min=-300, x_max=300, gamma_min=0.1, gamma_max=50,
+    def __init__(self, K=2, x_min=-300, x_max=300, gamma_min=0.1, gamma_max=50, alpha_min=0.0, alpha_max=0.3,
                  background='none', k_ramp=0):
         super().__init__(K=K, x_min=x_min, x_max=x_max, background=background, k_ramp=k_ramp)
         self.gamma_min = gamma_min
         self.gamma_max = gamma_max
-        self.model[0:K] = [DoniachSunjic(x_min, x_max, gamma_min, gamma_max) for k in range(self.K)]
+        self.model[0:K] = [DoniachSunjic(x_min, x_max, gamma_min, gamma_max, alpha_min, alpha_max)
+                           for k in range(self.K)]
 
     def set_single_params(self, **param):
         # setting parameters for each single Gaussian model.

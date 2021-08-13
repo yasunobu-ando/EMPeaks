@@ -178,7 +178,7 @@ class PseudoVoigtMixtureModel:
         return [self.model[k].init_model() for k in range(self.K)]
 
     def predict(self, x):
-        return self.P0_tot * np.sum([self.pi[k] * self.model[k].predict(x) for k in range(self.K_all)], axis=0)
+        return np.sum([self.pi[k] * self.model[k].predict(x) for k in range(self.K_all)], axis=0)
 
     def log_likelihood(self, x, intensity):
         return np.sum(intensity * np.log(self.predict(x) + 1e-200))
@@ -304,7 +304,7 @@ class PseudoVoigtMixtureModel:
             #self.e_step(T_bin)
             #self.m_step(T_bin, freq)
             self.e_step(x)
-            self.m_step(x, intensity)
+            self.m_step(x, intensity, r_eps)
 
             #ll = self.log_likelihood(T_bin, freq)
             ll = self.log_likelihood(x, intensity)
@@ -375,14 +375,16 @@ class PseudoVoigtMixtureModel:
         self._gamma = np.array([self.pi[k]*self.model[k].predict(x)/(self.predict(x)+eps) for k in range(self.K_all)])
         return
 
-    def m_step(self, x, intensity):
+    def m_step(self, x, intensity, r_eps):
         self.pi = np.array([np.sum(intensity * self._gamma[k]) for k in range(self.K_all)])
         self.pi = self.pi/np.sum(self.pi)
-        [self.model[k].maximum_likelihood_estimation(x, intensity * self._gamma[k]) for k in range(self.K_all)]
+        [self.model[k].maximum_likelihood_estimation(x,
+                                                     intensity * self._gamma[k],
+                                                     eps=r_eps) for k in range(self.K_all)]
         return
 
     def leastsq(self, x, intensity, stdout):
-        print("Starting Pseudo-Voigt fitting via least square method.")
+        print("Start Pseudo-Voigt fitting via least square method.")
         print("Fitting parameters are Ea, Tp, pi, and P0_tot.")
 
         def TSDC(x, param):
@@ -503,7 +505,7 @@ class PseudoVoigtMixtureModel:
         return rmse
 
     def l2_div(self, x, intensity, stdout):
-        print("Starting TSDC fitting via least square method.")
+        print("Start fitting via least square method.")
         print("L2 divergence based estimation.")
         print("Fitting parameters are Ea, Tp, pi, and P0_tot.")
 
@@ -620,8 +622,8 @@ class PseudoVoigtMixtureModel:
 
         ax.plot(x, self.predict(x) * self.P0_tot, 'black', linewidth=3, ls='--', label='full_model')
         ax.scatter(x_data, intensity, label='data')
-        ax.set_xlabel('Temperature [K]')
-        ax.set_ylabel('Current Intensity [nA]')
+        ax.set_xlabel('Energy [eV]')
+        ax.set_ylabel('Intensity')
         ax.legend()
         plt.show()
         return

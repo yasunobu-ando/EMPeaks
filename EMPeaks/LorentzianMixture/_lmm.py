@@ -1,4 +1,4 @@
-xfrom EMPeaks.LorentzianMixture._lorentz import Lorentzian
+from EMPeaks.LorentzianMixture._lorentz import Lorentzian
 # from EMPeaks.Background import UniformModel, SquareRootModel, LinearModel, TriangleModel, RampModel
 from scipy import integrate
 from scipy import optimize
@@ -12,9 +12,6 @@ class LorentzianMixtureModel:
     """
     class Mixture(K, Background)
     K: mixture component of Lorentzian
-    Background: default 'uniform': including Uniform background model
-                'none' : No background model is included.
-
     """
     def __init__(self, K=2, x_min=-300, x_max=300, gamma_min=0.1, gamma_max=500,
                  background='none', k_ramp=0):
@@ -300,7 +297,7 @@ class LorentzianMixtureModel:
         ll = 0.0
         residual = 0.0
 
-        print("<< Starting TSDC fitting via Adapted EM Algorithm. >>")
+        print("<< Start fitting via Adapted EM Algorithm. >>")
         tmp_it = range(max_iter)
         t1 = time.time()
 
