@@ -25,7 +25,7 @@ class EM(GaussianMixtureModel):
             LL_sample.append(self.LL[-1])
             param_sample.append(self.param)
 
-        best_index = np.argmax(LL_sample)
+        best_index = np.nanargmax(LL_sample)
         self.param = param_sample[best_index]
         self.gmm_mu_ = [self.param[k]['mu'] for k in range(self.gmm_K_)]
         self.gmm_sigma_ = [self.param[k]['sigma'] for k in range(self.gmm_K_)]

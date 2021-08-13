@@ -243,7 +243,7 @@ class PseudoVoigtMixtureModel:
         print('Sampling the different initial guess with {:3d} trial is finished.'.format(trial))
 
         if criteria is 'likelihood':
-            index_best = int(np.argmax(hist_LL))
+            index_best = int(np.nanargmax(hist_LL))
             print('Maximum Log-Likelihood is obtained in trial {:3d}'.format(index_best))
         elif criteria is 'rmse':
             index_sucess = ~np.isnan(hist_RMSE)
