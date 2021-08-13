@@ -60,8 +60,8 @@ class PseudoVoigtMixtureModel:
         else:
             print("Setting Background is not implemented.")
 
-        self.P0_tot = 1.0
-        self.P0 = self.pi * self.P0_tot
+        self.N_tot = 1.0
+        self.N = self.pi * self.N_tot
 
     def set_param(self, **param):
         """
@@ -122,11 +122,11 @@ class PseudoVoigtMixtureModel:
         #         self.model.append(RampModel(self.ramp_node[k], self.ramp_node[k + 1], self.x_max))
         #     self.model.append(TriangleModel(self.ramp_node[-1], self.x_max))
 
-        # setting mixture ratio pi, P0, and P0_tot
-        if param_keys >= {'P0'}:
-            self.P0 = param['P0']
-            self.P0_tot = np.sum(param['P0'])
-            self.pi = param['P0']/self.P0_tot
+        # setting mixture ratio pi, N, and N_tot
+        if param_keys >= {'N'}:
+            self.N = param['N']
+            self.N_tot = np.sum(param['N'])
+            self.pi = param['N']/self.N_tot
             return
 
         if param_keys >= {'pi'}:
@@ -168,13 +168,13 @@ class PseudoVoigtMixtureModel:
         #     self.model[-1].s_uni = s_in_linear[0]
         #     self.model[-1].s_tri = s_in_linear[1]
         _tmp_param['pi'][0:self.K] = list(np.array(self.pi)[0:self.K][_tmp_index])
-        _tmp_param['P0'] = list(np.array(_tmp_param['pi'])*self.P0_tot)
+        _tmp_param['N'] = list(np.array(_tmp_param['pi'])*self.N_tot)
         return _tmp_param
 
     def init_param_uniform(self):
         self.pi = np.random.rand(self.K_all)
         self.pi = self.pi/self.pi.sum()
-        self.P0 = self.pi * self.P0_tot
+        self.N = self.pi * self.N_tot
         return [self.model[k].init_model() for k in range(self.K)]
 
     def predict(self, x):
@@ -254,7 +254,7 @@ class PseudoVoigtMixtureModel:
         info = {'index_best': index_best,
                 'LL_hist': hist_LL,
                 'RMSE_hist': np.array([hist_run_info[i]['RMSE'] for i in range(trial)]),
-                'P0_tot_hist': np.array([hist_model[i]['P0_tot'] for i in range(trial)]),
+                'N_tot_hist': np.array([hist_model[i]['N_tot'] for i in range(trial)]),
                 'x0_hist': np.array([hist_model[i]['x0'] for i in range(trial)]),
                 'gamma_hist': np.array([hist_model[i]['gamma'] for i in range(trial)]),
                 'time_hist': np.array([hist_run_info[i]['total_time'] for i in range(trial)]),
@@ -267,8 +267,8 @@ class PseudoVoigtMixtureModel:
         print('Best model parameters and scores of samples are following:')
         print('   x0:       ' + ('{:5.3f} eV        ' * len(param['x0'])).format(*param['x0']))
         print('   gamma:     ' + ('{:6.3e}          ' * len(param['gamma'])).format(*param['gamma']))
-        print('   P0_tot:   {:6.3e} '.format(self.P0_tot))
-        print('   P0:       ' + ('{:6.3e}       ' * len(param['pi'])).format(*param['pi'] * self.P0_tot))
+        print('   N_tot:   {:6.3e} '.format(self.N_tot))
+        print('   N:       ' + ('{:6.3e}       ' * len(param['pi'])).format(*param['pi'] * self.N_tot))
         print('   pi:       ' + ('{:6.3e}       ' * len(param['pi'])).format(*param['pi']))
         print('   LL:      {:12.8e}\n'
               '   RMSE:     {:12.8e}\n'.format(info['LL_hist'][index_best], info['RMSE_hist'][index_best])
@@ -343,8 +343,9 @@ class PseudoVoigtMixtureModel:
             print('   LogLikelihood:      {:12.8e}\n'
                   '        residual:       {:12.8e}'.format(ll, residual))
 
-        #rmse = self.leastsq_for_normalization_factor(T_bin, freq, stdout)
-        rmse = self.leastsq_for_normalization_factor(x, intensity, stdout)
+        # rmse = self.leastsq_for_normalization_factor(x, intensity, stdout)
+        self.N_tot = sum(intensity)
+        rmse = np.sqrt(np.average((intensity - self.predict(x) * self.N_tot)**2))
         param = self.export_param()
 
         run_info = {
@@ -362,8 +363,8 @@ class PseudoVoigtMixtureModel:
             print('   x0:        ' + ('{:5.3f}      ' * len(param['x0'])).format(*param['x0']))
             print('   gamma:     ' + ('{:6.3e}      ' * len(param['gamma'])).format(*param['gamma']))
             print('   eta:     ' + ('{:6.3e}      ' * len(param['eta'])).format(*param['eta']))
-            print('   P0_tot:   {:6.3e} '.format(self.P0_tot))
-            print('   P0:       ' + ('{:6.3e}       ' * len(param['pi'])).format(*np.array(param['pi'])*self.P0_tot))
+            print('   N_tot:   {:6.3e} '.format(self.N_tot))
+            print('   N:       ' + ('{:6.3e}       ' * len(param['pi'])).format(*np.array(param['pi'])*self.N_tot))
             print('   pi:       ' + ('{:6.3e}       ' * len(param['pi'])).format(*param['pi']))
             print('   LL:      {:12.8e}\n'
                   '   RMSE:     {:12.8e}\n'.format(ll, rmse))
@@ -385,17 +386,17 @@ class PseudoVoigtMixtureModel:
 
     def leastsq(self, x, intensity, stdout):
         print("Start Pseudo-Voigt fitting via least square method.")
-        print("Fitting parameters are Ea, Tp, pi, and P0_tot.")
+        print("Fitting parameters are Ea, Tp, pi, and N_tot.")
 
         def TSDC(x, param):
             dict_param = {"K":self.K, "x0": list(param[0:self.K]),
                     "gamma": list(param[self.K:2*self.K]),
-                    'P0': list(param[2*self.K:3*self.K+self.K_all])
+                    'N': list(param[2*self.K:3*self.K+self.K_all])
                     }
             if self.background is 'linear':
                 dict_param.update({'s_tri': param[-1]})
             self.set_param(**dict_param)
-            return self.predict(x) * self.P0_tot
+            return self.predict(x) * self.N_tot
 
         def residual(param, x, y):
             return y - TSDC(x, param)
@@ -440,7 +441,7 @@ class PseudoVoigtMixtureModel:
 
         param_dict = {"K":self.K, "x0": list(opt_param[0:self.K]),
                       "gamma": list(opt_param[self.K:2*self.K]),
-                      'P0': list(opt_param[2*self.K:2*self.K + self.K_all])}
+                      'N': list(opt_param[2*self.K:2*self.K + self.K_all])}
 
         self.set_param(**param_dict)
         t_tot = time.time() - start
@@ -464,8 +465,8 @@ class PseudoVoigtMixtureModel:
             print('Estimated model parameters and scores are following:')
             print('   x0:       ' + ('{:5.3f} eV        ' * len(param['x0'])).format(*param['x0']))
             print('   gamma:     ' + ('{:6.3e} s     ' * len(param['gamma'])).format(*param['gamma']))
-            print('   P0_tot:   {:6.3e} '.format(self.P0_tot))
-            print('   P0:       ' + ('{:6.3e}       ' * len(param['pi'])).format(*np.array(param['pi']) * self.P0_tot))
+            print('   N_tot:   {:6.3e} '.format(self.N_tot))
+            print('   N:       ' + ('{:6.3e}       ' * len(param['pi'])).format(*np.array(param['pi']) * self.N_tot))
             print('   pi:       ' + ('{:6.3e}       ' * len(param['pi'])).format(*param['pi']))
             print('   RMSE:     {:12.8e}\n'.format(rmse))
         else:
@@ -490,9 +491,9 @@ class PseudoVoigtMixtureModel:
                                     args=(x, intensity),
                                     loss='linear'
                                     )
-        self.P0_tot = ls.x[0]
+        self.N_tot = ls.x[0]
 
-        self.P0 = list(self.pi * self.P0_tot)
+        self.N = list(self.pi * self.N_tot)
 
         rmse = np.sqrt((ls['cost'])*2.0/x.size)
         if ls["success"] is True:
@@ -507,7 +508,7 @@ class PseudoVoigtMixtureModel:
     def l2_div(self, x, intensity, stdout):
         print("Start fitting via least square method.")
         print("L2 divergence based estimation.")
-        print("Fitting parameters are Ea, Tp, pi, and P0_tot.")
+        print("Fitting parameters are Ea, Tp, pi, and N_tot.")
 
         x_bin = np.arange(self.x_min, self.x_max, self.dx)
         freq = np.zeros(x_bin.size)
@@ -521,7 +522,7 @@ class PseudoVoigtMixtureModel:
         def model(x, param):
             dict_param = {"K":self.K, "x0": list(param[0:self.K]),
                     "gamma": list(param[self.K:2*self.K]),
-                    'P0': list(param[2*self.K:3*self.K+self.K_all])
+                    'N': list(param[2*self.K:3*self.K+self.K_all])
                     }
             if self.background is 'linear':
                 dict_param.update({'s_tri': param[-1]})
@@ -572,11 +573,11 @@ class PseudoVoigtMixtureModel:
             rmse = np.nan
             ls = {'success':False}
 
-        P0 = np.array(opt_param[2 * self.K:2 * self.K + self.K_all])
-        P0 = P0/P0.sum() * Z
+        N = np.array(opt_param[2 * self.K:2 * self.K + self.K_all])
+        N = N/N.sum() * Z
         param_dict = {"K":self.K, "x0": list(opt_param[0:self.K]),
                       "gamma": list(opt_param[self.K:2*self.K]),
-                      'P0': list(P0)}
+                      'N': list(N)}
 
         self.set_param(**param_dict)
         t_tot = time.time() - start
@@ -600,8 +601,8 @@ class PseudoVoigtMixtureModel:
             print('Estimated model parameters and scores are following:')
             print('   x0:       ' + ('{:5.3f}       ' * len(param['x0'])).format(*param['x0']))
             print('   gamma:     ' + ('{:6.3e}      ' * len(param['gamma'])).format(*param['gamma']))
-            print('   P0_tot:   {:6.3e} '.format(self.P0_tot))
-            print('   P0:       ' + ('{:6.3e}       ' * len(param['pi'])).format(*np.array(param['pi']) * self.P0_tot))
+            print('   N_tot:   {:6.3e} '.format(self.N_tot))
+            print('   N:       ' + ('{:6.3e}       ' * len(param['pi'])).format(*np.array(param['pi']) * self.N_tot))
             print('   pi:       ' + ('{:6.3e}       ' * len(param['pi'])).format(*param['pi']))
             print('   RMSE:     {:12.8e}\n'.format(rmse))
         else:
@@ -616,11 +617,11 @@ class PseudoVoigtMixtureModel:
 
         ax = fig.add_subplot(1, 1, 1)
         for k in range(self.K):
-            ax.plot(x, self.model[k].predict(x) * self.P0[k], label='model_' + str(k))
+            ax.plot(x, self.model[k].predict(x) * self.N[k], label='model_' + str(k))
         if self.background is not 'none':
-            ax.plot(x, self.model[-1].predict(x) * self.P0[-1], label=self.background)
+            ax.plot(x, self.model[-1].predict(x) * self.N[-1], label=self.background)
 
-        ax.plot(x, self.predict(x) * self.P0_tot, 'black', linewidth=3, ls='--', label='full_model')
+        ax.plot(x, self.predict(x) * self.N_tot, 'black', linewidth=3, ls='--', label='full_model')
         ax.scatter(x_data, intensity, label='data')
         ax.set_xlabel('Energy [eV]')
         ax.set_ylabel('Intensity')

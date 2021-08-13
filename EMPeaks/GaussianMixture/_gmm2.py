@@ -372,8 +372,9 @@ class GaussianMixtureModel:
             print('   LogLikelihood:      {:12.8e}\n'
                   '        residual:       {:12.8e}'.format(ll, residual))
 
-        rmse = self.leastsq_for_normalization_factor(x, intensity, stdout)
-        #self.N_tot = np.sum(intensity)
+        # rmse = self.leastsq_for_normalization_factor(x, intensity, stdout)
+        self.N_tot = np.sum(intensity)
+        rmse = np.sqrt(np.average((intensity - self.predict(x) * self.N_tot)**2))
         param = self.export_param()
 
         run_info = {
