@@ -343,9 +343,9 @@ class PseudoVoigtMixtureModel:
             print('   LogLikelihood:      {:12.8e}\n'
                   '        residual:       {:12.8e}'.format(ll, residual))
 
-        # rmse = self.leastsq_for_normalization_factor(x, intensity, stdout)
-        self.N_tot = sum(intensity)
-        rmse = np.sqrt(np.average((intensity - self.predict(x) * self.N_tot)**2))
+        rmse = self.leastsq_for_normalization_factor(x, intensity, stdout)
+        # self.N_tot = sum(intensity)
+        # rmse = np.sqrt(np.average((intensity - self.predict(x) * self.N_tot)**2))
         param = self.export_param()
 
         run_info = {
@@ -611,14 +611,23 @@ class PseudoVoigtMixtureModel:
         return run_info
 
     def plot(self, x_data, intensity):
+        self.dx = x_data[1] - x_data[0]
         figsize = (8, 3)
         fig = plt.figure(figsize=figsize)
-        x = np.arange(self.x_min, self.x_max)
+        x = np.arange(self.x_min, self.x_max, self.dx)
 
         ax = fig.add_subplot(1, 1, 1)
-        for k in range(self.K):
-            ax.plot(x, self.model[k].predict(x) * self.N[k], label='model_' + str(k))
-        if self.background is not 'none':
+        if self.background == 'none':
+            for k in range(self.K):
+                ax.plot(x, self.model[k].predict(x) * self.N[k], label='model_' + str(k))
+        elif self.background is 'sharley':
+            for k in range(self.K):
+                ax.plot(x, self.model[k].predict(x) * self.N[k], label='model_' + str(k))
+            y = self.model[-1].predict(x) * self.N[-1] + self.model[-2].predict(x) * self.N[-2]
+            ax.plot(x, y, label=self.background)
+        else:
+            for k in range(self.K):
+                ax.plot(x, self.model[k].predict(x) * self.N[k], label='model_' + str(k))
             ax.plot(x, self.model[-1].predict(x) * self.N[-1], label=self.background)
 
         ax.plot(x, self.predict(x) * self.N_tot, 'black', linewidth=3, ls='--', label='full_model')
