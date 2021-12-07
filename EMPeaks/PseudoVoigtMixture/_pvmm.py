@@ -483,7 +483,7 @@ class PseudoVoigtMixtureModel:
         def residual(param, x, y):
             return y - TSDC(x, param)
 
-        init_param = integrate.trapz(intensity, x)
+        init_param = np.abs(integrate.trapz(intensity, x))
         print('init', init_param)
 
         start = time.time()
