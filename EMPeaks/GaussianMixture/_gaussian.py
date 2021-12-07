@@ -48,7 +48,12 @@ class Gaussian:
 
     def maximum_likelihood_estimation(self, x, intensity):
         self.mu = np.sum(intensity * x) / (np.sum(intensity) + 1e-100)
-        self.sigma = np.sqrt(np.sum(intensity * (x - self.mu)**2) / (np.sum(intensity) + 1e-100))
+        sigma2 = np.sum(intensity * (x - self.mu)**2) / (np.sum(intensity) + 1e-100)
+        if sigma2 < 0:
+            print("sigma2 becomes negative. Reset the parameter again.")
+            self.init_model()
+        else:
+            self.sigma = np.sqrt(sigma2)
         if self.sigma < 1.0e-5:
             print("sigma becomes 0. Reset the parameter again.")
             self.init_model()
