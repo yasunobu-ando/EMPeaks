@@ -10,7 +10,7 @@ import time
 
 class GaussianMixtureModel:
     def __init__(self, K=2, x_min=-300, x_max=300, sigma_min=0.1, sigma_max=50,
-                 background='none', k_ramp=0):
+                 background='none', k_ramp=5):
         self.K = K
         self.x_min = x_min
         self.x_max = x_max
@@ -21,8 +21,6 @@ class GaussianMixtureModel:
 
         self.model = [Gaussian(x_min, x_max, sigma_min, sigma_max) for k in range(self.K)]
         self.pi = np.ones(self.K) / self.K
-        self.N_tot = 1.0
-        self.N = self.pi * self.N_tot
 
         if self.background == 'none':
             self.K_all = K
@@ -63,6 +61,7 @@ class GaussianMixtureModel:
         #    self.model[-1].peak_model.model = self.model[0:K]
         else:
             print("Setting Background is not implemented.")
+        self.N_tot = 1.0
         self.N = self.pi * self.N_tot
 
     def set_param(self, **param):
@@ -74,6 +73,8 @@ class GaussianMixtureModel:
         param_keys = set(param.keys())
         if param_keys >= {'K'}:
             self.K = param['K']
+        else:
+            param['K'] = self.K
 
         self.set_single_params(**param)
         self.set_param_background(**param)
@@ -114,7 +115,6 @@ class GaussianMixtureModel:
 
         elif self.background == 'uniform':
             self.K_all = self.K + 1
-
             self.model.append(UniformModel(self.x_min, self.x_max))
         elif self.background == 'squareroot':
             self.K_all = self.K + 1
@@ -178,11 +178,11 @@ class GaussianMixtureModel:
     def export_param(self):
         _tmp_param = self.__dict__
         _tmp_param, _tmp_index = self.export_single_params(_tmp_param)
-        # if self.background is 'linear':
-        #     s_in_linear = [self.model[-1].s_uni, self.model[-1].s_tri]
-        # if self.background is 'linear':
-        #     self.model[-1].s_uni = s_in_linear[0]
-        #     self.model[-1].s_tri = s_in_linear[1]
+        if self.background is 'linear':
+            s_in_linear = [self.model[-1].s_uni, self.model[-1].s_tri]
+        if self.background is 'linear':
+            self.model[-1].s_uni = s_in_linear[0]
+            self.model[-1].s_tri = s_in_linear[1]
         _tmp_param['pi'][0:self.K] = list(np.array(self.pi)[0:self.K][_tmp_index])
         _tmp_param['N'] = list(np.array(_tmp_param['pi']) * self.N_tot)
         self.set_param(**_tmp_param)
@@ -562,6 +562,11 @@ class GaussianMixtureModel:
             for k in range(self.K):
                 ax.plot(x, self.model[k].predict(x) * self.N[k], label='model_' + str(k))
             y = self.model[-1].predict(x) * self.N[-1] + self.model[-2].predict(x) * self.N[-2]
+            ax.plot(x, y, label=self.background)
+        elif self.background is 'ramp_sum':
+            for k in range(self.K):
+                ax.plot(x, self.model[k].predict(x) * self.N[k], label='model_' + str(k))
+            y = np.sum([self.model[self.K+k].predict(x) * self.N[self.K+k] for k in range(self.k_ramp+2)], axis=0)
             ax.plot(x, y, label=self.background)
         else:
             for k in range(self.K):

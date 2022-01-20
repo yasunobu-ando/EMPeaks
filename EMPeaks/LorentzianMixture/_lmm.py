@@ -14,7 +14,7 @@ class LorentzianMixtureModel:
     K: mixture component of Lorentzian
     """
     def __init__(self, K=2, x_min=-300, x_max=300, gamma_min=0.1, gamma_max=500,
-                 background='none', k_ramp=0):
+                 background='none', k_ramp=5):
         self.K = K
         self.x_min = x_min
         self.x_max = x_max
@@ -70,6 +70,8 @@ class LorentzianMixtureModel:
         org_K = self.K
         if param_keys >= {'K'}:
             self.K = param['K']
+        else:
+            param['K'] = self.K
 
         # setting parameters for each single Lorentzian model.
         single_params = []
@@ -625,6 +627,11 @@ class LorentzianMixtureModel:
             for k in range(self.K):
                 ax.plot(x, self.model[k].predict(x) * self.N[k], label='model_' + str(k))
             y = self.model[-1].predict(x) * self.N[-1] + self.model[-2].predict(x) * self.N[-2]
+            ax.plot(x, y, label=self.background)
+        elif self.background is 'ramp_sum':
+            for k in range(self.K):
+                ax.plot(x, self.model[k].predict(x) * self.N[k], label='model_' + str(k))
+            y = np.sum([self.model[self.K+k].predict(x) * self.N[self.K+k] for k in range(self.k_ramp+2)], axis=0)
             ax.plot(x, y, label=self.background)
         else:
             for k in range(self.K):
