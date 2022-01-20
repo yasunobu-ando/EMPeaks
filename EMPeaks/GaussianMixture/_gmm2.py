@@ -1,5 +1,5 @@
 from EMPeaks.GaussianMixture._gaussian import Gaussian
-# from ..Background import UniformModel, SquareRootModel, LinearModel, TriangleModel, RampModel
+from ..Background import UniformModel, SquareRootModel, LinearModel, TriangleModel, RampModel
 import numpy as np
 from scipy import integrate
 from scipy import optimize
@@ -26,41 +26,41 @@ class GaussianMixtureModel:
 
         if self.background == 'none':
             self.K_all = K
-        # elif self.background == 'uniform':
-        #     self.K_all = K + 1
-        #     self.pi = np.append(self.pi, 1.0e-4)
-        #     self.pi = self.pi / np.sum(self.pi)
-        #     self.model.append(UniformModel(self.x_min, self.x_max))
-        # elif self.background == 'squareroot':
-        #     self.K_all = K + 1
-        #     self.pi = np.append(self.pi, 1.0e-4)
-        #     self.pi = self.pi / np.sum(self.pi)
-        #     self.model.append(SquareRootModel(self.x_min, self.x_max))
-        # elif self.background == 'linear':
-        #     self.K_all = K + 1
-        #     self.pi = np.append(self.pi, 1.0e-4)
-        #     self.pi = self.pi / np.sum(self.pi)
-        #     self.model.append(LinearModel(self.x_min, self.x_max))
-        # elif self.background == 'ramp_sum':
-        #     print("RampSum Background is set.")
-        #     self.k_ramp = k_ramp
-        #     self.K_all = K + self.k_ramp + 2
-        #     self.ramp_node = np.linspace(self.x_min, self.x_max, self.k_ramp + 1, endpoint=False)
-        #     self.pi = np.append(self.pi, np.random.rand(self.k_ramp + 2))
-        #     self.pi = self.pi / np.sum(self.pi)
-        #     self.model.append(UniformModel(self.x_min, self.x_max))
-        #     for k in range(k_ramp):
-        #         self.model.append(RampModel(self.ramp_node[k], self.ramp_node[k + 1], self.x_max))
-        #     self.model.append(TriangleModel(self.ramp_node[-1], self.x_max))
-        # elif self.background == 'sharley':
-        #     print("Sharley Background is set.")
-        #     self.K_all = K + 2
-        #     self.pi = np.append(self.pi, 1.0e-4)
-        #     self.pi = np.append(self.pi, 1.0e-4)
-        #     self.pi = self.pi / np.sum(self.pi)
-        #     self.model.append(UniformModel(self.x_min, self.x_max))
-        #     self.model.append(Sharley(self.K, self.x_min, self.x_max))
-        #     self.model[-1].peak_model.model = self.model[0:K]
+        elif self.background == 'uniform':
+            self.K_all = K + 1
+            self.pi = np.append(self.pi, 1.0e-4)
+            self.pi = self.pi / np.sum(self.pi)
+            self.model.append(UniformModel(self.x_min, self.x_max))
+        elif self.background == 'squareroot':
+            self.K_all = K + 1
+            self.pi = np.append(self.pi, 1.0e-4)
+            self.pi = self.pi / np.sum(self.pi)
+            self.model.append(SquareRootModel(self.x_min, self.x_max))
+        elif self.background == 'linear':
+            self.K_all = K + 1
+            self.pi = np.append(self.pi, 1.0e-4)
+            self.pi = self.pi / np.sum(self.pi)
+            self.model.append(LinearModel(self.x_min, self.x_max))
+        elif self.background == 'ramp_sum':
+            print("RampSum Background is set.")
+            self.k_ramp = k_ramp
+            self.K_all = K + self.k_ramp + 2
+            self.ramp_node = np.linspace(self.x_min, self.x_max, self.k_ramp + 1, endpoint=False)
+            self.pi = np.append(self.pi, np.random.rand(self.k_ramp + 2))
+            self.pi = self.pi / np.sum(self.pi)
+            self.model.append(UniformModel(self.x_min, self.x_max))
+            for k in range(k_ramp):
+                 self.model.append(RampModel(self.ramp_node[k], self.ramp_node[k + 1], self.x_max))
+            self.model.append(TriangleModel(self.ramp_node[-1], self.x_max))
+        #elif self.background == 'sharley':
+        #    print("Sharley Background is set.")
+        #    self.K_all = K + 2
+        #    self.pi = np.append(self.pi, 1.0e-4)
+        #    self.pi = np.append(self.pi, 1.0e-4)
+        #    self.pi = self.pi / np.sum(self.pi)
+        #    self.model.append(UniformModel(self.x_min, self.x_max))
+        #    self.model.append(Sharley(self.K, self.x_min, self.x_max))
+        #    self.model[-1].peak_model.model = self.model[0:K]
         else:
             print("Setting Background is not implemented.")
         self.N = self.pi * self.N_tot
@@ -112,31 +112,31 @@ class GaussianMixtureModel:
         if self.background == 'none':
             self.K_all = self.K
 
-        # elif self.background == 'uniform':
-        #     self.K_all = self.K + 1
-        #
-        #     self.model.append(UniformModel(self.x_min, self.x_max))
-        # elif self.background == 'squareroot':
-        #     self.K_all = self.K + 1
-        #     self.model.append(SquareRootModel(self.x_min, self.x_max))
-        #
-        # elif self.background == 'linear':
-        #     self.K_all = self.K + 1
-        #     if ('s_tri' in param) and (0 <= param['s_tri'] <= 1.0):
-        #         self.model.append(LinearModel(self.x_min, self.x_max, s_tri=param['s_tri']))
-        #     else:
-        #         self.model.append(LinearModel(self.x_min, self.x_max))
-        #
-        # elif self.background == 'ramp_sum':
-        #     self.K_all = self.K + self.k_ramp + 2
-        #     self.ramp_node = np.linspace(self.x_min, self.x_max, self.k_ramp + 1, endpoint=False)
-        #     # self.pi = np.append(self.pi, np.random.rand(self.k_ramp + 2))
-        #     # self.pi = self.pi / np.sum(self.pi)
-        #     self.model.append(UniformModel(self.x_min, self.x_max))
-        #     for k in range(self.k_ramp):
-        #         self.model.append(RampModel(self.ramp_node[k], self.ramp_node[k + 1], self.x_max))
-        #     self.model.append(TriangleModel(self.ramp_node[-1], self.x_max))
-        #
+        elif self.background == 'uniform':
+            self.K_all = self.K + 1
+
+            self.model.append(UniformModel(self.x_min, self.x_max))
+        elif self.background == 'squareroot':
+            self.K_all = self.K + 1
+            self.model.append(SquareRootModel(self.x_min, self.x_max))
+
+        elif self.background == 'linear':
+            self.K_all = self.K + 1
+            if ('s_tri' in param) and (0 <= param['s_tri'] <= 1.0):
+                self.model.append(LinearModel(self.x_min, self.x_max, s_tri=param['s_tri']))
+            else:
+                self.model.append(LinearModel(self.x_min, self.x_max))
+
+        elif self.background == 'ramp_sum':
+            self.K_all = self.K + self.k_ramp + 2
+            self.ramp_node = np.linspace(self.x_min, self.x_max, self.k_ramp + 1, endpoint=False)
+            # self.pi = np.append(self.pi, np.random.rand(self.k_ramp + 2))
+            # self.pi = self.pi / np.sum(self.pi)
+            self.model.append(UniformModel(self.x_min, self.x_max))
+            for k in range(self.k_ramp):
+                self.model.append(RampModel(self.ramp_node[k], self.ramp_node[k + 1], self.x_max))
+            self.model.append(TriangleModel(self.ramp_node[-1], self.x_max))
+
         # elif self.background == 'sharley':
         #     self.K_all = self.K + 2
         #     self.model.append(UniformModel(self.x_min, self.x_max))
@@ -218,17 +218,17 @@ class GaussianMixtureModel:
             stdout=True, trial=10, criteria='likelihood'):
         self.x_min = np.min(x)
         self.x_max = np.max(x)
-        # if self.background is "uniform":
-        #     self.model[-1] = UniformModel(self.x_min, self.x_max)
-        # if self.background is "squareroot":
-        #     self.model[-1] = SquareRootModel(self.x_min, self.x_max)
-        # if self.background is "linear":
-        #     self.model[-1] = LinearModel(self.x_min, self.x_max)
-        # elif self.background == 'ramp_sum':
-        #     self.model.append(UniformModel(self.x_min, self.x_max))
-        #     for k in range(self.k_ramp):
-        #         self.model.append(RampModel(self.ramp_node[k], self.ramp_node[k + 1], self.x_max))
-        #     self.model.append(TriangleModel(self.ramp_node[-1], self.x_max))
+        if self.background is "uniform":
+            self.model[-1] = UniformModel(self.x_min, self.x_max)
+        if self.background is "squareroot":
+            self.model[-1] = SquareRootModel(self.x_min, self.x_max)
+        if self.background is "linear":
+            self.model[-1] = LinearModel(self.x_min, self.x_max)
+        elif self.background == 'ramp_sum':
+            self.model.append(UniformModel(self.x_min, self.x_max))
+            for k in range(self.k_ramp):
+                self.model.append(RampModel(self.ramp_node[k], self.ramp_node[k + 1], self.x_max))
+            self.model.append(TriangleModel(self.ramp_node[-1], self.x_max))
         # elif self.background == 'sharley':
         #     self.model.append(UniformModel(self.x_min, self.x_max))
         #     self.model.append(Sharley(self.K, self.x_min, self.x_max))
@@ -466,8 +466,8 @@ class GaussianMixtureModel:
                           "gamma": list(param[self.K:2 * self.K]),
                           'P0': list(param[2 * self.K:3 * self.K + self.K_all])
                           }
-            # if self.background is 'linear':
-            #     dict_param.update({'s_tri': param[-1]})
+            if self.background is 'linear':
+                dict_param.update({'s_tri': param[-1]})
             self.set_param(**dict_param)
             return self.predict(x) * Z
 
@@ -487,10 +487,10 @@ class GaussianMixtureModel:
         [lb.append(0.0) for i in range(self.K_all)]
         [ub.append(np.inf) for i in range(self.K_all)]
 
-        # if self.background is 'linear':
-        #     init_param = np.append(init_param, np.random.rand() * 1000)
-        #     lb.append(-1000)
-        #     ub.append(1000)
+        if self.background is 'linear':
+            init_param = np.append(init_param, np.random.rand() * 1000)
+            lb.append(-1000)
+            ub.append(1000)
 
         bnds = (lb, ub)
 
