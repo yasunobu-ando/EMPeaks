@@ -1,5 +1,10 @@
+# License: BSD-3-clause
+# Copyright © 2021 National Institute of Advanced Industrial Science and Technology (AIST)
+
 from EMPeaks.GaussianMixture._gaussian import Gaussian
 from ..Background import UniformModel, SquareRootModel, LinearModel, TriangleModel, RampModel
+from ..Background import TanhModel, TanhLinearModel, TanhQuadModel, TanhCubicModel
+
 import numpy as np
 from scipy import integrate
 from scipy import optimize
@@ -10,7 +15,7 @@ import time
 
 class GaussianMixtureModel:
     def __init__(self, K=2, x_min=-300, x_max=300, sigma_min=0.1, sigma_max=50,
-                 background='none', k_ramp=5):
+                 background='none', k_ramp=5, postedge_order=3):
         self.K = K
         self.x_min = x_min
         self.x_max = x_max
@@ -24,21 +29,25 @@ class GaussianMixtureModel:
 
         if self.background == 'none':
             self.K_all = K
+
         elif self.background == 'uniform':
             self.K_all = K + 1
             self.pi = np.append(self.pi, 1.0e-4)
             self.pi = self.pi / np.sum(self.pi)
             self.model.append(UniformModel(self.x_min, self.x_max))
+
         elif self.background == 'squareroot':
             self.K_all = K + 1
             self.pi = np.append(self.pi, 1.0e-4)
             self.pi = self.pi / np.sum(self.pi)
             self.model.append(SquareRootModel(self.x_min, self.x_max))
+
         elif self.background == 'linear':
             self.K_all = K + 1
             self.pi = np.append(self.pi, 1.0e-4)
             self.pi = self.pi / np.sum(self.pi)
             self.model.append(LinearModel(self.x_min, self.x_max))
+
         elif self.background == 'ramp_sum':
             print("RampSum Background is set.")
             self.k_ramp = k_ramp
@@ -48,8 +57,30 @@ class GaussianMixtureModel:
             self.pi = self.pi / np.sum(self.pi)
             self.model.append(UniformModel(self.x_min, self.x_max))
             for k in range(k_ramp):
-                 self.model.append(RampModel(self.ramp_node[k], self.ramp_node[k + 1], self.x_max))
+                self.model.append(RampModel(self.ramp_node[k], self.ramp_node[k + 1], self.x_max))
             self.model.append(TriangleModel(self.ramp_node[-1], self.x_max))
+
+        elif self.background == 'xafs':
+            print("XAFS Background is set.")
+            self.postedge_order = postedge_order
+            self.K_all = self.K + postedge_order + 3
+            self.pi = np.append(self.pi, np.random.rand(self.postedge_order + 3))
+            self.pi = self.pi / np.sum(self.pi)
+            self.model.append(UniformModel(self.x_min, self.x_max))
+            self.model.append(LinearModel(self.x_min, self.x_max))
+            self.model.append(TanhModel(self.x_min, self.x_max))
+            if self.postedge_order == 3:
+                self.model.append(TanhLinearModel(self.x_min, self.x_max))
+                self.model.append(TanhQuadModel(self.x_min, self.x_max))
+                self.model.append(TanhCubicModel(self.x_min, self.x_max))
+            elif self.postedge_order == 2:
+                self.model.append(TanhLinearModel(self.x_min, self.x_max))
+                self.model.append(TanhQuadModel(self.x_min, self.x_max))
+            elif self.postedge_order == 1:
+                self.model.append(TanhLinearModel(self.x_min, self.x_max))
+            else:
+                print("postedge order is less than 1. Please set more than 1.")
+
         #elif self.background == 'sharley':
         #    print("Sharley Background is set.")
         #    self.K_all = K + 2
@@ -87,20 +118,20 @@ class GaussianMixtureModel:
             return
 
         if param_keys >= {'pi'}:
-            if type(param['pi']) is not list:
+            if type(param['pi']) != list:
                 print("Parameter \"pi\" is not list type. Then pi is uniformly set as default.")
                 self.pi = np.ones(self.K_all) / self.K_all
                 return
-            if len(param["pi"]) is self.K_all:
+            if len(param["pi"]) == self.K_all:
                 self.pi = np.array(param['pi']) / sum(param['pi'])
-                if sum(param["pi"]) is not 1.0:
+                if sum(param["pi"]) != 1.0:
                     print("Sum of \"pi\" must be unity. Then values are normalized as ", self.pi)
                 return
-            elif len(param["pi"]) is self.K:
+            elif len(param["pi"]) == self.K:
                 print("Parameter \"pi\" does not have background ratio. pi for background is set to be 0.1.")
                 self.pi = np.array(param['pi']) / sum(param['pi']) * 0.9
                 self.pi = np.append(self.pi, 0.1)
-                if sum(param["pi"]) is not 1.0:
+                if sum(param["pi"]) != 1.0:
                     print("Sum of \"pi\" must be unity. Then values are normalized as ", self.pi)
                 return
             else:
@@ -136,6 +167,22 @@ class GaussianMixtureModel:
             for k in range(self.k_ramp):
                 self.model.append(RampModel(self.ramp_node[k], self.ramp_node[k + 1], self.x_max))
             self.model.append(TriangleModel(self.ramp_node[-1], self.x_max))
+
+        elif self.background == 'xafs':
+            self.K_all = self.K + self.postedge_order + 3
+            if self.postedge_order == 3:
+                self.model.append(UniformModel(self.x_min, self.x_max), LinearModel(self.x_min, self.x_max),
+                                  TanhModel(self.x_min, self.x_max), TanhLinearModel(self.x_min, self.x_max),
+                                  TanhQuadModel(self.x_min, self.x_max), TanhCubicModel(self.x_min, self.x_max))
+            elif self.postedge_order == 2:
+                self.model.append(UniformModel(self.x_min, self.x_max), LinearModel(self.x_min, self.x_max),
+                                  TanhModel(self.x_min, self.x_max), TanhLinearModel(self.x_min, self.x_max),
+                                  TanhQuadModel(self.x_min, self.x_max))
+            elif self.postedge_order == 1:
+                self.model.append(UniformModel(self.x_min, self.x_max), LinearModel(self.x_min, self.x_max),
+                                  TanhModel(self.x_min, self.x_max), TanhLinearModel(self.x_min, self.x_max))
+            else:
+                print("postedge order is less than 1. Please set more than 1.")
 
         # elif self.background == 'sharley':
         #     self.K_all = self.K + 2
@@ -218,34 +265,49 @@ class GaussianMixtureModel:
             stdout=True, trial=10, criteria='likelihood'):
         self.x_min = np.min(x)
         self.x_max = np.max(x)
-        if self.background is "uniform":
+        if self.background == "uniform":
             self.model[-1] = UniformModel(self.x_min, self.x_max)
-        if self.background is "squareroot":
+        if self.background == "squareroot":
             self.model[-1] = SquareRootModel(self.x_min, self.x_max)
-        if self.background is "linear":
+        if self.background == "linear":
             self.model[-1] = LinearModel(self.x_min, self.x_max)
-        elif self.background == 'ramp_sum':
+        if self.background == 'ramp_sum':
             self.model.append(UniformModel(self.x_min, self.x_max))
             for k in range(self.k_ramp):
                 self.model.append(RampModel(self.ramp_node[k], self.ramp_node[k + 1], self.x_max))
             self.model.append(TriangleModel(self.ramp_node[-1], self.x_max))
+        if self.background == "xafs":
+            if self.postedge_order == 3:
+                self.model.append(UniformModel(self.x_min, self.x_max), LinearModel(self.x_min, self.x_max),
+                                  TanhModel(self.x_min, self.x_max), TanhLinearModel(self.x_min, self.x_max),
+                                  TanhQuadModel(self.x_min, self.x_max), TanhCubicModel(self.x_min, self.x_max))
+            elif self.postedge_order == 2:
+                self.model.append(UniformModel(self.x_min, self.x_max), LinearModel(self.x_min, self.x_max),
+                                  TanhModel(self.x_min, self.x_max), TanhLinearModel(self.x_min, self.x_max),
+                                  TanhQuadModel(self.x_min, self.x_max))
+            elif self.postedge_order == 1:
+                self.model.append(UniformModel(self.x_min, self.x_max), LinearModel(self.x_min, self.x_max),
+                                  TanhModel(self.x_min, self.x_max), TanhLinearModel(self.x_min, self.x_max))
+            else:
+                print("postedge order is less than 1. Please set more than 1.")
+
         # elif self.background == 'sharley':
         #     self.model.append(UniformModel(self.x_min, self.x_max))
         #     self.model.append(Sharley(self.K, self.x_min, self.x_max))
 
-        if method is 'leastsq':
+        if method == 'leastsq':
             info = self.leastsq(x, intensity, stdout)
             return info
 
-        if method is 'l2div':
+        if method == 'l2div':
             info = self.l2_div(x, intensity, stdout)
             return info
 
-        elif method is 'adapted_em':
+        elif method == 'adapted_em':
             info = self.adapted_em(x, intensity, max_iter, r_eps, stdout)
             return info
 
-        elif method is 'smart':
+        elif method == 'smart':
             print('Start smart fitting process.')
             print('>>> Step 1: Sampling {:3d} trials with low threshold of 1.0e-6.'.format(trial))
             info1 = self.sampling(x, intensity, method='adapted_em',
@@ -567,6 +629,12 @@ class GaussianMixtureModel:
             for k in range(self.K):
                 ax.plot(x, self.model[k].predict(x) * self.N[k], label='model_' + str(k))
             y = np.sum([self.model[self.K+k].predict(x) * self.N[self.K+k] for k in range(self.k_ramp+2)], axis=0)
+            ax.plot(x, y, label=self.background)
+        elif self.background is 'xafs':
+            for k in range(self.K):
+                ax.plot(x, self.model[k].predict(x) * self.N[k], label='model_' + str(k))
+            y = np.sum([self.model[self.K + k].predict(x) * self.N[self.K + k] for k
+                        in range(self.postedge_order + 3)], axis=0)
             ax.plot(x, y, label=self.background)
         else:
             for k in range(self.K):

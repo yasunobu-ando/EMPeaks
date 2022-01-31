@@ -1,8 +1,8 @@
+# License: BSD-3-clause
+# Copyright © 2021 National Institute of Advanced Industrial Science and Technology (AIST)
+
 from EMPeaks.DoniachSunjicMixture._doniachsunjic import DoniachSunjic
 from EMPeaks.GaussianMixture._gmm2 import GaussianMixtureModel
-# from ..Background import UniformModel, SquareRootModel, LinearModel, TriangleModel, RampModel
-# from scipy import integrate
-# from scipy import optimize
 import matplotlib.pyplot as plt
 import numpy as np
 # import copy

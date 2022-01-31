@@ -1,3 +1,6 @@
+# License: BSD-3-clause
+# Copyright © 2021 National Institute of Advanced Industrial Science and Technology (AIST)
+
 import numpy as np
 from scipy import stats, optimize
 from scipy.integrate import quad
@@ -191,7 +194,7 @@ class TanhModel:
         self.x_min = x_min
         self.x_max = x_max
         self.x0 = 0.0
-        self.a = 2.0
+        self.a = (x_max - x_min)/5
         self.eps = 1.0e-10
 
     def normalization_factor(self):
@@ -226,7 +229,7 @@ class TanhLinearModel:
         self.x_min = x_min
         self.x_max = x_max
         self.x0 = 0.0
-        self.a = 2.0
+        self.a = (x_max - x_min)/5
         self.eps = 1e-10
 
     def normalization_factor(self):
@@ -263,7 +266,7 @@ class TanhQuadModel:
         self.x_min = x_min
         self.x_max = x_max
         self.x0 = 0.0
-        self.a = 2.0
+        self.a = (x_max - x_min)/5
         self.eps = 1e-10
 
     def normalization_factor(self):
@@ -300,7 +303,7 @@ class TanhCubicModel:
         self.x_min = x_min
         self.x_max = x_max
         self.x0 = 0.0
-        self.a = 2.0
+        self.a = (x_max - x_min)/5
         self.eps = 1e-10
 
     def normalization_factor(self):
