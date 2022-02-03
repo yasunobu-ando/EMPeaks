@@ -19,7 +19,7 @@ class UniformModel:
     def predict(self, x):
         return stats.uniform.pdf(x, loc=self.x0, scale=self.width)
 
-    def _LL(self, x, weight):
+    def log_likelihood(self, x, weight):
         t = np.log(self.predict(x))
         self.LL = (t * weight).sum()
         return self.LL
@@ -31,24 +31,32 @@ class UniformModel:
 class LinearModel:
     """
     LinearModel(self, x, w):
+    リニアモデルには、一様バックグラウンド成分が含まれています。
+    オプションで、勾配の符号を決定する必要があります。
     x: sampling point or data bins
     w: weight or intensity of the data
     """
-    def __init__(self, x0, x1, s_tri=np.random.rand()):
+    def __init__(self, x0, x1, sign='positive', s_tri=np.random.rand()):
         self.x0 = x0
         self.x1 = x1
         self.s_tri = s_tri
         self.s_uni = 1.0 - self.s_tri
+        if sign == 'positive':
+            self.sign = +1
+        elif sign == 'negative':
+            self.sign = -1
         self.LL = 0.0
 
     def predict(self, x):
         s1 = self.s_tri
         s2 = 1 - s1
-        a = (2.0 * s1) / (self.x1 - self.x0) ** 2
-        b = s2 / (self.x1 - self.x0) - a * self.x0
-        return a*x + b
+        a = self.sign * (2.0 * s1) / (self.x1 - self.x0) ** 2
+        b = s2 / (self.x1 - self.x0)
+        # when sign is +1, x0 is selected. Otherwise, sing = -1, x1 is selected.
+        c = self.x0 ** ((1+self.sign)/2) * self.x1 ** ((1-self.sign)/2)
+        return a*(x-c) + b
 
-    def _LL(self, x, weight):
+    def log_likelihood(self, x, weight):
         t = np.log(self.predict(x))
         self.LL = (t * weight).sum()
         return self.LL
@@ -57,20 +65,22 @@ class LinearModel:
         def score(s_tri, x, weight):
             eps = 1e-5
             s_uni = 1 - s_tri
-            a = (2.0 * s_tri) / (self.x1 - self.x0) ** 2
-            b = s_uni / (self.x1 - self.x0) - a * self.x0
+            a = (2.0 * s_tri) / ((self.x1 - self.x0) ** 2) * self.sign
+            b = s_uni / (self.x1 - self.x0)
+            c = self.x0 ** ((1 + self.sign) / 2) * self.x1 ** ((1 - self.sign) / 2)
 
-            a_prime = 2.0 / (self.x1 - self.x0) ** 2
-            b_prime = -1 / (self.x1 - self.x0) - a_prime * self.x0
-
-            return np.sum(weight * (a_prime * x + b_prime) / (a * x + b + eps))
+            a_prime = 2.0 / ((self.x1 - self.x0) ** 2) * self.sign
+            b_prime = -1 / (self.x1 - self.x0)
+            score = np.sum(weight * (a_prime * (x - c) + b_prime) / (a * (x - c) + b + eps))
+            return score
 
         try:
-            self.s_tri = optimize.brentq(score, 0, 1.0 - 1.0e-5, args=(x, weight))
+            self.s_tri = optimize.brentq(score, 0,   1.0 - 1.0e-5, args=(x, weight))
             self.s_uni = 1.0 - self.s_tri
             return
 
         except ValueError:
+            print("ValueError at MLE of Linear background model")
             self.s_tri = (score(0, x, weight) >= score(1, x, weight))
             self.s_uni = (score(0, x, weight) < score(1, x, weight))
             return
@@ -90,7 +100,7 @@ class RampModel:
         a = y1/(self.x1 - self.x0)
         return np.minimum( a * (x - self.x1) + y1, y1 * np.ones(x.size)) * ( x <= self.x2) * (self.x0 < x)
 
-    def _LL(self, x, weight):
+    def log_likelihood(self, x, weight):
         t = np.log(self.predict(x))
         self.LL = (t * weight).sum()
         return self.LL
@@ -100,6 +110,9 @@ class RampModel:
 
 
 class TriangleModel:
+    """
+    TriangleModel:
+    """
     def __init__(self, x0, x1):
         self.x0 = x0
         self.x1 = x1
@@ -110,13 +123,14 @@ class TriangleModel:
         a = y1 / (self.x1 - self.x0)
         return (a * (x - self.x1) + y1) * (self.x0 < x) * (x <= self.x1)
 
-    def _LL(self, x, weight):
+    def log_likelihood(self, x, weight):
         t = np.log(self.predict(x))
         self.LL = (t * weight).sum()
         return self.LL
 
     def maximum_likelihood_estimation(self, x, weight):
         return
+
 
 class SquareRootModel:
     """
@@ -131,7 +145,7 @@ class SquareRootModel:
     def predict(self, x):
         return np.sqrt(x) /(2.0/3.0 * (self.x1**(1.5) - self.x0**(1.5)))
 
-    def _LL(self, x, weight):
+    def log_likelihood(self, x, weight):
         t = np.log(self.predict(x))
         self.LL = (t * weight).sum()
         return self.LL
@@ -157,7 +171,7 @@ class LinearModelEM:
         return self.pi_tri * 2.0 * stats.triang.pdf(x, 0.5, loc = self.x0, scale=2*self.width) \
                 + self.pi_uni * stats.uniform.pdf(x, loc=self.x0, scale=self.width)
 
-    def _LL(self, x, weight):
+    def log_likelihood(self, x, weight):
         t = np.log(self.predict(x))
         self.LL = (t * weight).sum()
         return self.LL
@@ -190,11 +204,11 @@ class LinearModelEM:
 
 
 class TanhModel:
-    def __init__(self, x_min=-10.0, x_max=10.0):
+    def __init__(self, x0, a, x_min=-10.0, x_max=10.0):
         self.x_min = x_min
         self.x_max = x_max
-        self.x0 = 0.0
-        self.a = (x_max - x_min)/5
+        self.x0 = x0
+        self.a = a
         self.eps = 1.0e-10
 
     def normalization_factor(self):
@@ -209,7 +223,7 @@ class TanhModel:
     def log_likelihood(self, x, intensity):
         return np.sum(intensity * np.log(self.predict(x) + self.eps))
 
-    def MLE(self, x, intensity):
+    def maximum_likelihood_estimation(self, x, intensity):
         def func(param):
             self.x0 = param[0]
             self.a = param[1]
@@ -220,16 +234,15 @@ class TanhModel:
                                                         (0, np.inf)], method='L-BFGS-B')
         self.x0 = info['x'][0]
         self.a = info['x'][1]
-
-        return info
+        return
 
 
 class TanhLinearModel:
-    def __init__(self, x_min=-10.0, x_max=10.0):
+    def __init__(self, x0, a, x_min=-10.0, x_max=10.0):
         self.x_min = x_min
         self.x_max = x_max
-        self.x0 = 0.0
-        self.a = (x_max - x_min)/5
+        self.x0 = x0
+        self.a = a
         self.eps = 1e-10
 
     def normalization_factor(self):
@@ -246,7 +259,7 @@ class TanhLinearModel:
     def log_likelihood(self, x, intensity):
         return np.sum(intensity * np.log(self.predict(x) + self.eps))
 
-    def MLE(self, x, intensity):
+    def maximum_likelihood_estimation(self, x, intensity):
         def func(param):
             self.x0 = param[0]
             self.a = param[1]
@@ -257,16 +270,15 @@ class TanhLinearModel:
                                                         (0, np.inf)], method='L-BFGS-B')
         self.x0 = info['x'][0]
         self.a = info['x'][1]
-
-        return info
+        return
 
 
 class TanhQuadModel:
-    def __init__(self, x_min=-10.0, x_max=10.0):
+    def __init__(self, x0, a, x_min=-10.0, x_max=10.0):
         self.x_min = x_min
         self.x_max = x_max
-        self.x0 = 0.0
-        self.a = (x_max - x_min)/5
+        self.x0 = x0
+        self.a = a
         self.eps = 1e-10
 
     def normalization_factor(self):
@@ -283,7 +295,7 @@ class TanhQuadModel:
     def log_likelihood(self, x, intensity):
         return np.sum(intensity * np.log(self.predict(x) + self.eps))
 
-    def MLE(self, x, intensity):
+    def maximum_likelihood_estimation(self, x, intensity):
         def func(param):
             self.x0 = param[0]
             self.a = param[1]
@@ -295,15 +307,15 @@ class TanhQuadModel:
         self.x0 = info['x'][0]
         self.a = info['x'][1]
 
-        return info
+        return
 
 
 class TanhCubicModel:
-    def __init__(self, x_min=-10.0, x_max=10.0):
+    def __init__(self, x0, a, x_min=-10.0, x_max=10.0):
         self.x_min = x_min
         self.x_max = x_max
-        self.x0 = 0.0
-        self.a = (x_max - x_min)/5
+        self.x0 = x0
+        self.a = a
         self.eps = 1e-10
 
     def normalization_factor(self):
@@ -320,7 +332,7 @@ class TanhCubicModel:
     def log_likelihood(self, x, intensity):
         return np.sum(intensity * np.log(self.predict(x) + self.eps))
 
-    def MLE(self, x, intensity):
+    def maximum_likelihood_estimation(self, x, intensity):
         def func(param):
             self.x0 = param[0]
             self.a = param[1]
@@ -332,4 +344,4 @@ class TanhCubicModel:
         self.x0 = info['x'][0]
         self.a = info['x'][1]
 
-        return info
+        return

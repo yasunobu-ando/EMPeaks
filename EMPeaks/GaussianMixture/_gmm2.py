@@ -15,13 +15,17 @@ import time
 
 class GaussianMixtureModel:
     def __init__(self, K=2, x_min=-300, x_max=300, sigma_min=0.1, sigma_max=50,
-                 background='none', k_ramp=5, postedge_order=3):
+                 background='none', sign='positive', k_ramp=5, postedge_order=3):
         self.K = K
         self.x_min = x_min
         self.x_max = x_max
         self.sigma_min = sigma_min
         self.sigma_max = sigma_max
         self.background = background
+        if background == 'xafs':
+            self.sign='negative'
+        else:
+            self.sign=sign
         self.dx = 1.0
 
         self.model = [Gaussian(x_min, x_max, sigma_min, sigma_max) for k in range(self.K)]
@@ -46,7 +50,7 @@ class GaussianMixtureModel:
             self.K_all = K + 1
             self.pi = np.append(self.pi, 1.0e-4)
             self.pi = self.pi / np.sum(self.pi)
-            self.model.append(LinearModel(self.x_min, self.x_max))
+            self.model.append(LinearModel(self.x_min, self.x_max, sign=self.sign))
 
         elif self.background == 'ramp_sum':
             print("RampSum Background is set.")
@@ -63,21 +67,27 @@ class GaussianMixtureModel:
         elif self.background == 'xafs':
             print("XAFS Background is set.")
             self.postedge_order = postedge_order
-            self.K_all = self.K + postedge_order + 3
-            self.pi = np.append(self.pi, np.random.rand(self.postedge_order + 3))
+            self.K_all = self.K + postedge_order + 2
+            self.pi = np.append(self.pi, np.random.rand(self.postedge_order + 2))
             self.pi = self.pi / np.sum(self.pi)
-            self.model.append(UniformModel(self.x_min, self.x_max))
-            self.model.append(LinearModel(self.x_min, self.x_max))
-            self.model.append(TanhModel(self.x_min, self.x_max))
+            self.model.append(LinearModel(self.x_min, self.x_max, sign='negative'))
+            self.model.append(TanhModel((self.x_min+self.x_max)/2,
+                                        (self.x_max-self.x_min)*10, self.x_min, self.x_max))
             if self.postedge_order == 3:
-                self.model.append(TanhLinearModel(self.x_min, self.x_max))
-                self.model.append(TanhQuadModel(self.x_min, self.x_max))
-                self.model.append(TanhCubicModel(self.x_min, self.x_max))
+                self.model.append(TanhLinearModel((self.x_min+self.x_max)/2,
+                                                  (self.x_max-self.x_min)*10, self.x_min, self.x_max))
+                self.model.append(TanhQuadModel((self.x_min+self.x_max)/2,
+                                                (self.x_max-self.x_min)*10, self.x_min, self.x_max))
+                self.model.append(TanhCubicModel((self.x_min+self.x_max)/2,
+                                                 (self.x_max-self.x_min)*10, self.x_min, self.x_max))
             elif self.postedge_order == 2:
-                self.model.append(TanhLinearModel(self.x_min, self.x_max))
-                self.model.append(TanhQuadModel(self.x_min, self.x_max))
+                self.model.append(TanhLinearModel((self.x_min+self.x_max)/2,
+                                                  (self.x_max-self.x_min)*10, self.x_min, self.x_max))
+                self.model.append(TanhQuadModel((self.x_min+self.x_max)/2,
+                                                (self.x_max-self.x_min)*10, self.x_min, self.x_max))
             elif self.postedge_order == 1:
-                self.model.append(TanhLinearModel(self.x_min, self.x_max))
+                self.model.append(TanhLinearModel((self.x_min+self.x_max)/2,
+                                                  (self.x_max-self.x_min)*10, self.x_min, self.x_max))
             else:
                 print("postedge order is less than 1. Please set more than 1.")
 
@@ -95,10 +105,17 @@ class GaussianMixtureModel:
         self.N_tot = 1.0
         self.N = self.pi * self.N_tot
 
+    def predict(self, x):
+        return np.sum([self.pi[k] * self.model[k].predict(x) for k in range(self.K_all)], axis=0)
+
+    def log_likelihood(self, x, intensity):
+        return np.sum(intensity * np.log(self.predict(x) + 1e-200))
+
     def set_param(self, **param):
         """
         """
         if not param:
+            print("No param is set.")
             return self
 
         param_keys = set(param.keys())
@@ -147,6 +164,7 @@ class GaussianMixtureModel:
         elif self.background == 'uniform':
             self.K_all = self.K + 1
             self.model.append(UniformModel(self.x_min, self.x_max))
+
         elif self.background == 'squareroot':
             self.K_all = self.K + 1
             self.model.append(SquareRootModel(self.x_min, self.x_max))
@@ -154,9 +172,9 @@ class GaussianMixtureModel:
         elif self.background == 'linear':
             self.K_all = self.K + 1
             if ('s_tri' in param) and (0 <= param['s_tri'] <= 1.0):
-                self.model.append(LinearModel(self.x_min, self.x_max, s_tri=param['s_tri']))
+                self.model.append(LinearModel(self.x_min, self.x_max, self.sign, s_tri=param['s_tri']))
             else:
-                self.model.append(LinearModel(self.x_min, self.x_max))
+                self.model.append(LinearModel(self.x_min, self.sign, self.x_max))
 
         elif self.background == 'ramp_sum':
             self.K_all = self.K + self.k_ramp + 2
@@ -169,18 +187,28 @@ class GaussianMixtureModel:
             self.model.append(TriangleModel(self.ramp_node[-1], self.x_max))
 
         elif self.background == 'xafs':
-            self.K_all = self.K + self.postedge_order + 3
+            self.K_all = self.K + self.postedge_order + 2
+            if ('s_tri' in param) and (0 <= param['s_tri'] <= 1.0):
+                self.model.append(LinearModel(self.x_min, self.x_max, s_tri=param['s_tri'], sign='negative'))
+            else:
+                self.model.append(LinearModel(self.x_min, self.x_max, sign='negative'))
+            if 'xafs_x0' in param:
+                x0 = param['xafs_x0']
+                a = param['xafs_a']
+            else:
+                x0 = np.ones(self.postedge_order+1)*(self.x_max+self.x_min)/2
+                a = np.ones(self.postedge_order+1)*(self.x_max-self.x_min)*10
+
+            self.model.append(TanhModel(x0[0], a[0], self.x_min, self.x_max))
             if self.postedge_order == 3:
-                self.model.append(UniformModel(self.x_min, self.x_max), LinearModel(self.x_min, self.x_max),
-                                  TanhModel(self.x_min, self.x_max), TanhLinearModel(self.x_min, self.x_max),
-                                  TanhQuadModel(self.x_min, self.x_max), TanhCubicModel(self.x_min, self.x_max))
+                self.model.append(TanhLinearModel(x0[1], a[1], self.x_min, self.x_max))
+                self.model.append(TanhQuadModel(x0[2], a[2], self.x_min, self.x_max))
+                self.model.append(TanhCubicModel(x0[3], a[3], self.x_min, self.x_max))
             elif self.postedge_order == 2:
-                self.model.append(UniformModel(self.x_min, self.x_max), LinearModel(self.x_min, self.x_max),
-                                  TanhModel(self.x_min, self.x_max), TanhLinearModel(self.x_min, self.x_max),
-                                  TanhQuadModel(self.x_min, self.x_max))
+                self.model.append(TanhLinearModel(x0[1], a[1], self.x_min, self.x_max))
+                self.model.append(TanhQuadModel(x0[2], a[2], self.x_min, self.x_max))
             elif self.postedge_order == 1:
-                self.model.append(UniformModel(self.x_min, self.x_max), LinearModel(self.x_min, self.x_max),
-                                  TanhModel(self.x_min, self.x_max), TanhLinearModel(self.x_min, self.x_max))
+                self.model.append(TanhLinearModel(x0[1], a[1], self.x_min, self.x_max))
             else:
                 print("postedge order is less than 1. Please set more than 1.")
 
@@ -223,13 +251,14 @@ class GaussianMixtureModel:
         return
 
     def export_param(self):
+        """
+        バックグラウンドがパラメータを有する場合には、この関数を編集してパラメータの保存を行う必要あり
+        :return:
+        """
         _tmp_param = self.__dict__
         _tmp_param, _tmp_index = self.export_single_params(_tmp_param)
-        if self.background is 'linear':
-            s_in_linear = [self.model[-1].s_uni, self.model[-1].s_tri]
-        if self.background is 'linear':
-            self.model[-1].s_uni = s_in_linear[0]
-            self.model[-1].s_tri = s_in_linear[1]
+        _tmp_param = self.export_background_param(_tmp_param)
+
         _tmp_param['pi'][0:self.K] = list(np.array(self.pi)[0:self.K][_tmp_index])
         _tmp_param['N'] = list(np.array(_tmp_param['pi']) * self.N_tot)
         self.set_param(**_tmp_param)
@@ -249,45 +278,66 @@ class GaussianMixtureModel:
 
         return _tmp_param, _tmp_index
 
+    def export_background_param(self, _tmp_param):
+        if self.background == 'linear':
+            _tmp_param["s_tri"] = self.model[-1].s_tri
+        if self.background == 'xafs':
+            _tmp_param = self.export_xafs_param(_tmp_param)
+        return _tmp_param
+
+    def export_xafs_param(self, _tmp_param):
+        _tmp_param["s_tri"] = self.model[self.K].s_tri
+        _tmp_param["xafs_x0"] = [self.model[self.K + k + 1].x0 for k in range(self.postedge_order + 1)]
+        _tmp_param["xafs_a"] = [self.model[self.K + k + 1].a for k in range(self.postedge_order + 1)]
+        return _tmp_param
+
     def init_param_uniform(self):
+        """
+        パラメータの初期化を行う関数
+        :return:
+        """
         self.pi = np.random.rand(self.K_all)
         self.pi = self.pi / self.pi.sum()
         self.N = self.pi * self.N_tot
         return [self.model[k].init_model() for k in range(self.K)]
 
-    def predict(self, x):
-        return np.sum([self.pi[k] * self.model[k].predict(x) for k in range(self.K_all)], axis=0)
-
-    def log_likelihood(self, x, intensity):
-        return np.sum(intensity * np.log(self.predict(x) + 1e-200))
-
     def fit(self, x, intensity, method='adapted_em', max_iter=3000, r_eps=1e-9,
             stdout=True, trial=10, criteria='likelihood'):
         self.x_min = np.min(x)
         self.x_max = np.max(x)
+
+        # バックグラウンド関数の定義域をデータに合わせる
         if self.background == "uniform":
             self.model[-1] = UniformModel(self.x_min, self.x_max)
         if self.background == "squareroot":
             self.model[-1] = SquareRootModel(self.x_min, self.x_max)
         if self.background == "linear":
-            self.model[-1] = LinearModel(self.x_min, self.x_max)
+            self.model[-1] = LinearModel(self.x_min, self.x_max, self.sign)
         if self.background == 'ramp_sum':
             self.model.append(UniformModel(self.x_min, self.x_max))
             for k in range(self.k_ramp):
                 self.model.append(RampModel(self.ramp_node[k], self.ramp_node[k + 1], self.x_max))
             self.model.append(TriangleModel(self.ramp_node[-1], self.x_max))
         if self.background == "xafs":
+            self.K_all = self.K + self.postedge_order + 2
+            self.model.append(LinearModel(self.x_min, self.x_max, sign='negative'))
+            self.model.append(TanhModel((self.x_min + self.x_max) / 2,
+                                        (self.x_max - self.x_min) * 10, self.x_min, self.x_max))
             if self.postedge_order == 3:
-                self.model.append(UniformModel(self.x_min, self.x_max), LinearModel(self.x_min, self.x_max),
-                                  TanhModel(self.x_min, self.x_max), TanhLinearModel(self.x_min, self.x_max),
-                                  TanhQuadModel(self.x_min, self.x_max), TanhCubicModel(self.x_min, self.x_max))
+                self.model.append(TanhLinearModel((self.x_min + self.x_max) / 2,
+                                                  (self.x_max - self.x_min) * 10, self.x_min, self.x_max))
+                self.model.append(TanhQuadModel((self.x_min + self.x_max) / 2,
+                                                (self.x_max - self.x_min) * 10, self.x_min, self.x_max))
+                self.model.append(TanhCubicModel((self.x_min + self.x_max) / 2,
+                                                 (self.x_max - self.x_min) * 10, self.x_min, self.x_max))
             elif self.postedge_order == 2:
-                self.model.append(UniformModel(self.x_min, self.x_max), LinearModel(self.x_min, self.x_max),
-                                  TanhModel(self.x_min, self.x_max), TanhLinearModel(self.x_min, self.x_max),
-                                  TanhQuadModel(self.x_min, self.x_max))
+                self.model.append(TanhLinearModel((self.x_min + self.x_max) / 2,
+                                                  (self.x_max - self.x_min) * 10, self.x_min, self.x_max))
+                self.model.append(TanhQuadModel((self.x_min + self.x_max) / 2,
+                                                (self.x_max - self.x_min) * 10, self.x_min, self.x_max))
             elif self.postedge_order == 1:
-                self.model.append(UniformModel(self.x_min, self.x_max), LinearModel(self.x_min, self.x_max),
-                                  TanhModel(self.x_min, self.x_max), TanhLinearModel(self.x_min, self.x_max))
+                self.model.append(TanhLinearModel((self.x_min + self.x_max) / 2,
+                                                  (self.x_max - self.x_min) * 10, self.x_min, self.x_max))
             else:
                 print("postedge order is less than 1. Please set more than 1.")
 
@@ -343,10 +393,10 @@ class GaussianMixtureModel:
 
         print('Sampling the different initial guess with {:3d} trial is finished.'.format(trial))
 
-        if criteria is 'likelihood':
+        if criteria == 'likelihood':
             index_best = int(np.nanargmax(hist_LL))
             print('Maximum Log-Likelihood is obtained in trial {:3d}'.format(index_best))
-        elif criteria is 'rmse':
+        elif criteria == 'rmse':
             index_sucess = ~np.isnan(hist_RMSE)
             index_best = int(np.nanargmin(hist_RMSE[index_sucess]))
             print(index_best)
@@ -402,7 +452,7 @@ class GaussianMixtureModel:
             residual = (ll - ll_0) / np.abs(ll_0)
             t2 = time.time()
 
-            if stdout is True:
+            if stdout == True:
                 if it % 10 == 0:
                     print("> iteration #{:3d}, LL={:10.8e}, residual={:4.3e}, elapsed time: {:5.2f} s"
                           .format(it, ll, residual, t2 - t1))
@@ -449,7 +499,7 @@ class GaussianMixtureModel:
             'LL_residual_hist': res_hist,
             'RMSE': rmse
         }
-        if stdout is True:
+        if stdout == True:
             print('Estimated model parameters and scores are following:')
             self.print_param_summary(param)
             print('   LL:      {:12.8e}\n'
@@ -461,6 +511,12 @@ class GaussianMixtureModel:
     def print_param_summary(self, param):
         print('   mu:        ' + ('{:5.3f} eV       ' * len(param['mu'])).format(*param['mu']))
         print('   sigma:     ' + ('{:6.3e}          ' * len(param['sigma'])).format(*param['sigma']))
+        if self.background == 'xafs':
+            print("XAFS background parameter")
+            print('   x0:        ' + ('{:5.3f} eV       ' * len(param['xafs_x0'])).format(*param['xafs_x0']))
+            print('    a:     ' + ('{:6.3e}          ' * len(param['xafs_a'])).format(*param['xafs_a']))
+
+            print(param['xafs_x0'], )
         print('   N_tot:   {:6.3e} '.format(self.N_tot))
         print('   N:         ' + ('{:6.3e}       ' * len(param['pi'])).format(*param['pi'] * self.N_tot))
         print('   pi:        ' + ('{:6.3e}       ' * len(param['pi'])).format(*param['pi']))
@@ -499,7 +555,7 @@ class GaussianMixtureModel:
         self.N = list(self.pi * self.N_tot)
 
         rmse = np.sqrt((ls['cost']) * 2.0 / x.size)
-        if ls["success"] is True:
+        if ls["success"] == True:
             print("   non-linear least-square optimization is successfully finished.")
             print("            RMSE:      {:12.6e}\n"
                   "    Elapsed time:      {:12.6e} s\n".format(rmse, time.time() - start))
@@ -528,7 +584,7 @@ class GaussianMixtureModel:
                           "gamma": list(param[self.K:2 * self.K]),
                           'P0': list(param[2 * self.K:3 * self.K + self.K_all])
                           }
-            if self.background is 'linear':
+            if self.background == 'linear':
                 dict_param.update({'s_tri': param[-1]})
             self.set_param(**dict_param)
             return self.predict(x) * Z
@@ -549,7 +605,7 @@ class GaussianMixtureModel:
         [lb.append(0.0) for i in range(self.K_all)]
         [ub.append(np.inf) for i in range(self.K_all)]
 
-        if self.background is 'linear':
+        if self.background == 'linear':
             init_param = np.append(init_param, np.random.rand() * 1000)
             lb.append(-1000)
             ub.append(1000)
@@ -598,7 +654,7 @@ class GaussianMixtureModel:
         }
 
         param = self.export_param()
-        if flag is True:
+        if flag == True:
             print("   non-linear least-square optimization is successfully finished.")
             print("            RMSE:      {:12.6e}\n"
                   "    Elapsed time:      {:12.6e} s\n".format(run_info['rmse'], run_info['t_tot']))
@@ -615,26 +671,25 @@ class GaussianMixtureModel:
         figsize = (8, 3)
         fig = plt.figure(figsize=figsize)
         x = np.arange(self.x_min, self.x_max, self.dx)
-
         ax = fig.add_subplot(1, 1, 1)
         if self.background == 'none':
             for k in range(self.K):
                 ax.plot(x, self.model[k].predict(x) * self.N[k], label='model_' + str(k))
-        elif self.background is 'sharley':
+        elif self.background == 'sharley':
             for k in range(self.K):
                 ax.plot(x, self.model[k].predict(x) * self.N[k], label='model_' + str(k))
             y = self.model[-1].predict(x) * self.N[-1] + self.model[-2].predict(x) * self.N[-2]
             ax.plot(x, y, label=self.background)
-        elif self.background is 'ramp_sum':
+        elif self.background == 'ramp_sum':
             for k in range(self.K):
                 ax.plot(x, self.model[k].predict(x) * self.N[k], label='model_' + str(k))
             y = np.sum([self.model[self.K+k].predict(x) * self.N[self.K+k] for k in range(self.k_ramp+2)], axis=0)
             ax.plot(x, y, label=self.background)
-        elif self.background is 'xafs':
+        elif self.background == 'xafs':
             for k in range(self.K):
                 ax.plot(x, self.model[k].predict(x) * self.N[k], label='model_' + str(k))
             y = np.sum([self.model[self.K + k].predict(x) * self.N[self.K + k] for k
-                        in range(self.postedge_order + 3)], axis=0)
+                        in range(self.postedge_order + 2)], axis=0)
             ax.plot(x, y, label=self.background)
         else:
             for k in range(self.K):
