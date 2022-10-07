@@ -12,7 +12,7 @@ class PseudoVoigt:
         self.gamma_max = gamma_max
         self.x0 = np.random.uniform(x_min, x_max)
         self.gamma = np.random.uniform(gamma_min, gamma_max)
-        self.eta = np.random.uniform()
+        self.eta = np.random.uniform(0.5, 1.0)
         self.interval = (self.x_min, self.x_max)
 
     def set_param(self, **param):
@@ -181,7 +181,7 @@ class PseudoVoigt:
         return
 
     def _cm_step_eta(self, x, intensity):
-        eta = np.arange(0, 1, 0.01)
+        eta = np.arange(0.8, 1, 0.01)
         ll = []
         for i in range(eta.size):
             self.eta = eta[i]

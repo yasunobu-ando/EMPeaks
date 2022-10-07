@@ -35,7 +35,7 @@ class PseudoVoigtMixtureModel(GaussianMixtureModel):
 
     def export_single_params(self, _tmp_param):
         """ parameters are sorted in the order of the first element in param_set."""
-        param_set = {"x0", "gamma"}
+        param_set = {"x0", "gamma", "eta"}
         _tmp = {}
         for param in list(param_set):
             _tmp[param] = [self.model[k].__dict__[param] for k in range(self.K)]
@@ -56,6 +56,7 @@ class PseudoVoigtMixtureModel(GaussianMixtureModel):
     def print_param_summary(self, param):
         print('   x0:       ' + ('{:5.3f} eV        ' * len(param['x0'])).format(*param['x0']))
         print('   gamma:     ' + ('{:6.3e}          ' * len(param['gamma'])).format(*param['gamma']))
+        print('   eta:     ' + ('{:6.3e}          ' * len(param['eta'])).format(*param['eta']))
         print('   N_tot:   {:6.3e} '.format(self.N_tot))
         print('   N:       ' + ('{:6.3e}       ' * len(param['pi'])).format(*param['pi'] * self.N_tot))
         print('   pi:       ' + ('{:6.3e}       ' * len(param['pi'])).format(*param['pi']))
