@@ -88,7 +88,7 @@ class DoniachSunjicMixtureModel(GaussianMixtureModel):
 
 
 def main():
-    lmm = DoniachSunjicMixtureModel()
+    dsmm = DoniachSunjicMixtureModel()
     test = DoniachSunjicMixtureModel()
 
     test.model[0].x0 = -100
@@ -97,11 +97,11 @@ def main():
     x = np.arange(test.x_min, test.x_max)
     y = test.predict(x) * 10000
 
-    lmm.sampling(x, y, trial=10, r_eps=1.e-6)
-    lmm.fit(x, y, r_eps=1.e-8)
+    dsmm.sampling(x, y, trial=10, r_eps=1.e-6)
+    dsmm.fit(x, y, r_eps=1.e-8)
 
     plt.plot(x, y)
-    plt.plot(x, lmm.predict(x) * lmm.N_tot)
+    plt.plot(x, dsmm.predict(x) * dsmm.N_tot)
     plt.show()
 
 
