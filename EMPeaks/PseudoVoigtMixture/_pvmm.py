@@ -1,6 +1,6 @@
 from EMPeaks.PseudoVoigtMixture._pseudo_voigt import PseudoVoigt
 from EMPeaks.GaussianMixture._gmm2 import GaussianMixtureModel
-# from ..Background import UniformModel, SquareRootModel, LinearModel, TriangleModel, RampModel
+from EMPeaks.Background import UniformModel, SquareRootModel, LinearModel, TriangleModel, RampModel
 from scipy import integrate
 from scipy import optimize
 import matplotlib.pyplot as plt
@@ -22,45 +22,7 @@ class PseudoVoigtMixtureModel(GaussianMixtureModel):
         super().__init__(K=K, x_min=x_min, x_max=x_max, background=background, k_ramp=k_ramp)
         self.gamma_min = gamma_min
         self.gamma_max = gamma_max
-        self.background = background
-        self.dx = 1.0
-
-        self.model = [PseudoVoigt(x_min, x_max, gamma_min, gamma_max) for k in range(self.K)]
-        self.pi = np.ones(self.K) / self.K
-
-        if self.background == 'none':
-            self.K_all = K
-        elif self.background == 'uniform':
-            self.K_all = K + 1
-            self.pi = np.append(self.pi, 1.0e-4)
-            self.pi = self.pi / np.sum(self.pi)
-            self.model.append(UniformModel(self.x_min, self.x_max))
-        elif self.background == 'squareroot':
-            self.K_all = K + 1
-            self.pi = np.append(self.pi, 1.0e-4)
-            self.pi = self.pi / np.sum(self.pi)
-            self.model.append(SquareRootModel(self.x_min, self.x_max))
-        elif self.background == 'linear':
-            self.K_all = K + 1
-            self.pi = np.append(self.pi, 1.0e-4)
-            self.pi = self.pi / np.sum(self.pi)
-            self.model.append(LinearModel(self.x_min, self.x_max))
-        elif self.background == 'ramp_sum':
-            print("RampSum Background is set.")
-            self.k_ramp = k_ramp
-            self.K_all = K + self.k_ramp + 2
-            self.ramp_node = np.linspace(self.x_min, self.x_max, self.k_ramp+1, endpoint=False)
-            self.pi = np.append(self.pi, np.random.rand(self.k_ramp + 2))
-            self.pi = self.pi / np.sum(self.pi)
-            self.model.append(UniformModel(self.x_min, self.x_max))
-            for k in range(k_ramp):
-                self.model.append(RampModel(self.ramp_node[k], self.ramp_node[k + 1], self.x_max))
-            self.model.append(TriangleModel(self.ramp_node[-1], self.x_max))
-        else:
-            print("Setting Background is not implemented.")
-
-        self.N_tot = 1.0
-        self.N = self.pi * self.N_tot
+        self.model[0:K] = [PseudoVoigt(x_min, x_max, gamma_min, gamma_max) for k in range(self.K)]
 
     def set_param(self, **param):
         """

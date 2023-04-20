@@ -1,5 +1,5 @@
 from EMPeaks.GaussianMixture._gaussian import Gaussian
-from ..Background import UniformModel, SquareRootModel, LinearModel, TriangleModel, RampModel
+from EMPeaks.Background import UniformModel, SquareRootModel, LinearModel, TriangleModel, RampModel
 import numpy as np
 from scipy import integrate
 from scipy import optimize
@@ -87,20 +87,20 @@ class GaussianMixtureModel:
             return
 
         if param_keys >= {'pi'}:
-            if type(param['pi']) is not list:
+            if type(param['pi']) != list:
                 print("Parameter \"pi\" is not list type. Then pi is uniformly set as default.")
                 self.pi = np.ones(self.K_all) / self.K_all
                 return
-            if len(param["pi"]) is self.K_all:
+            if len(param["pi"]) == self.K_all:
                 self.pi = np.array(param['pi']) / sum(param['pi'])
-                if sum(param["pi"]) is not 1.0:
+                if sum(param["pi"]) != 1.0:
                     print("Sum of \"pi\" must be unity. Then values are normalized as ", self.pi)
                 return
-            elif len(param["pi"]) is self.K:
+            elif len(param["pi"]) == self.K:
                 print("Parameter \"pi\" does not have background ratio. pi for background is set to be 0.1.")
                 self.pi = np.array(param['pi']) / sum(param['pi']) * 0.9
                 self.pi = np.append(self.pi, 0.1)
-                if sum(param["pi"]) is not 1.0:
+                if sum(param["pi"]) != 1.0:
                     print("Sum of \"pi\" must be unity. Then values are normalized as ", self.pi)
                 return
             else:
@@ -150,11 +150,11 @@ class GaussianMixtureModel:
         for k in range(self.K):
             dict = {}
             for key in param_keys & param_set:
-                if type(param[key]) is not list:
+                if type(param[key]) != list:
                     print("Error: SingleModel parameters must be list type.")
                     self.K = org_K
                     return
-                if len(param[key]) is not param['K']:
+                if len(param[key]) != param['K']:
                     print("Error: length of parameters \"" + key + "\" is not consistent with value K.")
                     self.K = org_K
                     return
@@ -178,9 +178,9 @@ class GaussianMixtureModel:
     def export_param(self):
         _tmp_param = self.__dict__
         _tmp_param, _tmp_index = self.export_single_params(_tmp_param)
-        if self.background is 'linear':
+        if self.background == 'linear':
             s_in_linear = [self.model[-1].s_uni, self.model[-1].s_tri]
-        if self.background is 'linear':
+        if self.background == 'linear':
             self.model[-1].s_uni = s_in_linear[0]
             self.model[-1].s_tri = s_in_linear[1]
         _tmp_param['pi'][0:self.K] = list(np.array(self.pi)[0:self.K][_tmp_index])
@@ -216,13 +216,16 @@ class GaussianMixtureModel:
 
     def fit(self, x, intensity, method='adapted_em', max_iter=3000, r_eps=1e-9,
             stdout=True, trial=10, criteria='likelihood'):
+        print("**** Start spectrum fitting via EM algorithm ****")
+        print("background: {}".format(self.background))
+
         self.x_min = np.min(x)
         self.x_max = np.max(x)
-        if self.background is "uniform":
+        if self.background == "uniform":
             self.model[-1] = UniformModel(self.x_min, self.x_max)
-        if self.background is "squareroot":
+        if self.background == "squareroot":
             self.model[-1] = SquareRootModel(self.x_min, self.x_max)
-        if self.background is "linear":
+        if self.background == "linear":
             self.model[-1] = LinearModel(self.x_min, self.x_max)
         elif self.background == 'ramp_sum':
             self.model.append(UniformModel(self.x_min, self.x_max))
@@ -233,19 +236,19 @@ class GaussianMixtureModel:
         #     self.model.append(UniformModel(self.x_min, self.x_max))
         #     self.model.append(Sharley(self.K, self.x_min, self.x_max))
 
-        if method is 'leastsq':
+        if method == 'leastsq':
             info = self.leastsq(x, intensity, stdout)
             return info
 
-        if method is 'l2div':
+        if method == 'l2div':
             info = self.l2_div(x, intensity, stdout)
             return info
 
-        elif method is 'adapted_em':
+        elif method == 'adapted_em':
             info = self.adapted_em(x, intensity, max_iter, r_eps, stdout)
             return info
 
-        elif method is 'smart':
+        elif method == 'smart':
             print('Start smart fitting process.')
             print('>>> Step 1: Sampling {:3d} trials with low threshold of 1.0e-6.'.format(trial))
             info1 = self.sampling(x, intensity, method='adapted_em',
@@ -281,10 +284,10 @@ class GaussianMixtureModel:
 
         print('Sampling the different initial guess with {:3d} trial is finished.'.format(trial))
 
-        if criteria is 'likelihood':
+        if criteria == 'likelihood':
             index_best = int(np.nanargmax(hist_LL))
             print('Maximum Log-Likelihood is obtained in trial {:3d}'.format(index_best))
-        elif criteria is 'rmse':
+        elif criteria == 'rmse':
             index_sucess = ~np.isnan(hist_RMSE)
             index_best = int(np.nanargmin(hist_RMSE[index_sucess]))
             print(index_best)
@@ -340,7 +343,7 @@ class GaussianMixtureModel:
             residual = (ll - ll_0) / np.abs(ll_0)
             t2 = time.time()
 
-            if stdout is True:
+            if stdout == True:
                 if it % 10 == 0:
                     print("> iteration #{:3d}, LL={:10.8e}, residual={:4.3e}, elapsed time: {:5.2f} s"
                           .format(it, ll, residual, t2 - t1))
@@ -387,7 +390,7 @@ class GaussianMixtureModel:
             'LL_residual_hist': res_hist,
             'RMSE': rmse
         }
-        if stdout is True:
+        if stdout == True:
             print('Estimated model parameters and scores are following:')
             self.print_param_summary(param)
             print('   LL:      {:12.8e}\n'
@@ -437,7 +440,7 @@ class GaussianMixtureModel:
         self.N = list(self.pi * self.N_tot)
 
         rmse = np.sqrt((ls['cost']) * 2.0 / x.size)
-        if ls["success"] is True:
+        if ls["success"] == True:
             print("   non-linear least-square optimization is successfully finished.")
             print("            RMSE:      {:12.6e}\n"
                   "    Elapsed time:      {:12.6e} s\n".format(rmse, time.time() - start))
@@ -466,7 +469,7 @@ class GaussianMixtureModel:
                           "gamma": list(param[self.K:2 * self.K]),
                           'P0': list(param[2 * self.K:3 * self.K + self.K_all])
                           }
-            if self.background is 'linear':
+            if self.background == 'linear':
                 dict_param.update({'s_tri': param[-1]})
             self.set_param(**dict_param)
             return self.predict(x) * Z
@@ -487,7 +490,7 @@ class GaussianMixtureModel:
         [lb.append(0.0) for i in range(self.K_all)]
         [ub.append(np.inf) for i in range(self.K_all)]
 
-        if self.background is 'linear':
+        if self.background == 'linear':
             init_param = np.append(init_param, np.random.rand() * 1000)
             lb.append(-1000)
             ub.append(1000)
@@ -536,7 +539,7 @@ class GaussianMixtureModel:
         }
 
         param = self.export_param()
-        if flag is True:
+        if flag == True:
             print("   non-linear least-square optimization is successfully finished.")
             print("            RMSE:      {:12.6e}\n"
                   "    Elapsed time:      {:12.6e} s\n".format(run_info['rmse'], run_info['t_tot']))
@@ -558,12 +561,12 @@ class GaussianMixtureModel:
         if self.background == 'none':
             for k in range(self.K):
                 ax.plot(x, self.model[k].predict(x) * self.N[k], label='model_' + str(k))
-        elif self.background is 'sharley':
+        elif self.background == 'sharley':
             for k in range(self.K):
                 ax.plot(x, self.model[k].predict(x) * self.N[k], label='model_' + str(k))
             y = self.model[-1].predict(x) * self.N[-1] + self.model[-2].predict(x) * self.N[-2]
             ax.plot(x, y, label=self.background)
-        elif self.background is 'ramp_sum':
+        elif self.background == 'ramp_sum':
             for k in range(self.K):
                 ax.plot(x, self.model[k].predict(x) * self.N[k], label='model_' + str(k))
             y = np.sum([self.model[self.K+k].predict(x) * self.N[self.K+k] for k in range(self.k_ramp+2)], axis=0)

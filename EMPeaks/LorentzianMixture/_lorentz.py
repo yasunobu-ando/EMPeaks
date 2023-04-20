@@ -168,7 +168,7 @@ class Lorentzian:
         self.gamma = np.sqrt(2.0 * np.log(2.0) * np.sum(x ** 2 * intensity) / np.sum(intensity))
 
         init = [self.x0, self.gamma]
-        info = optimize.minimize(func_ll, x0=init, bounds=[(-200, 200), (0.1, 2000)], method='L-BFGS-B')
+        info = optimize.minimize(func_ll, x0=init, bounds=[(self.x_min, self.x_max), (0.1, 2000)], method='L-BFGS-B')
         self.x0 = info['x'][0]
         self.gamma = info['x'][1]
         return

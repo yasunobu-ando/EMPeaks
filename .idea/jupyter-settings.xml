@@ -7,7 +7,7 @@
           <value>
             <JupyterConnectionParameters>
               <option name="managed" value="true" />
-              <option name="sdkHomePath" value="$USER_HOME$/.conda/envs/pycharm/bin/python" />
+              <option name="sdkHomePath" value="$USER_HOME$/.pyenv/versions/miniconda3-4.7.12/bin/python" />
             </JupyterConnectionParameters>
           </value>
         </entry>

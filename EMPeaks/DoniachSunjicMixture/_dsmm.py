@@ -1,12 +1,12 @@
 from EMPeaks.DoniachSunjicMixture._doniachsunjic import DoniachSunjic
 from EMPeaks.GaussianMixture._gmm2 import GaussianMixtureModel
-# from ..Background import UniformModel, SquareRootModel, LinearModel, TriangleModel, RampModel
-# from scipy import integrate
-# from scipy import optimize
+from EMPeaks.Background import UniformModel, SquareRootModel, LinearModel, TriangleModel, RampModel
+from scipy import integrate
+from scipy import optimize
 import matplotlib.pyplot as plt
 import numpy as np
-# import copy
-# import time
+import copy
+import time
 
 
 class DoniachSunjicMixtureModel(GaussianMixtureModel):
