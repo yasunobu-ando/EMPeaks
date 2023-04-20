@@ -1,5 +1,5 @@
 from EMPeaks.PseudoVoigtMixture._pseudo_voigt import PseudoVoigt
-# from ..Background import UniformModel, SquareRootModel, LinearModel, TriangleModel, RampModel
+from ..Background import UniformModel, SquareRootModel, LinearModel, TriangleModel, RampModel
 from scipy import integrate
 from scipy import optimize
 import matplotlib.pyplot as plt
@@ -17,7 +17,7 @@ class PseudoVoigtMixtureModel:
 
     """
     def __init__(self, K=2, x_min=-300, x_max=300, gamma_min=0.1, gamma_max=50,
-                 background='none', k_ramp=0):
+                 background='none', k_ramp=5):
         self.K = K
         self.x_min = x_min
         self.x_max = x_max
@@ -31,32 +31,32 @@ class PseudoVoigtMixtureModel:
 
         if self.background == 'none':
             self.K_all = K
-        # elif self.background == 'uniform':
-        #     self.K_all = K + 1
-        #     self.pi = np.append(self.pi, 1.0e-4)
-        #     self.pi = self.pi / np.sum(self.pi)
-        #     self.model.append(UniformModel(self.x_min, self.x_max))
-        # elif self.background == 'squareroot':
-        #     self.K_all = K + 1
-        #     self.pi = np.append(self.pi, 1.0e-4)
-        #     self.pi = self.pi / np.sum(self.pi)
-        #     self.model.append(SquareRootModel(self.x_min, self.x_max))
-        # elif self.background == 'linear':
-        #     self.K_all = K + 1
-        #     self.pi = np.append(self.pi, 1.0e-4)
-        #     self.pi = self.pi / np.sum(self.pi)
-        #     self.model.append(LinearModel(self.x_min, self.x_max))
-        # elif self.background == 'ramp_sum':
-        #     print("RampSum Background is set.")
-        #     self.k_ramp = k_ramp
-        #     self.K_all = K + self.k_ramp + 2
-        #     self.ramp_node = np.linspace(self.x_min, self.x_max, self.k_ramp+1, endpoint=False)
-        #     self.pi = np.append(self.pi, np.random.rand(self.k_ramp + 2))
-        #     self.pi = self.pi / np.sum(self.pi)
-        #     self.model.append(UniformModel(self.x_min, self.x_max))
-        #     for k in range(k_ramp):
-        #         self.model.append(RampModel(self.ramp_node[k], self.ramp_node[k + 1], self.x_max))
-        #     self.model.append(TriangleModel(self.ramp_node[-1], self.x_max))
+        elif self.background == 'uniform':
+            self.K_all = K + 1
+            self.pi = np.append(self.pi, 1.0e-4)
+            self.pi = self.pi / np.sum(self.pi)
+            self.model.append(UniformModel(self.x_min, self.x_max))
+        elif self.background == 'squareroot':
+            self.K_all = K + 1
+            self.pi = np.append(self.pi, 1.0e-4)
+            self.pi = self.pi / np.sum(self.pi)
+            self.model.append(SquareRootModel(self.x_min, self.x_max))
+        elif self.background == 'linear':
+            self.K_all = K + 1
+            self.pi = np.append(self.pi, 1.0e-4)
+            self.pi = self.pi / np.sum(self.pi)
+            self.model.append(LinearModel(self.x_min, self.x_max))
+        elif self.background == 'ramp_sum':
+            print("RampSum Background is set.")
+            self.k_ramp = k_ramp
+            self.K_all = K + self.k_ramp + 2
+            self.ramp_node = np.linspace(self.x_min, self.x_max, self.k_ramp+1, endpoint=False)
+            self.pi = np.append(self.pi, np.random.rand(self.k_ramp + 2))
+            self.pi = self.pi / np.sum(self.pi)
+            self.model.append(UniformModel(self.x_min, self.x_max))
+            for k in range(k_ramp):
+                self.model.append(RampModel(self.ramp_node[k], self.ramp_node[k + 1], self.x_max))
+            self.model.append(TriangleModel(self.ramp_node[-1], self.x_max))
         else:
             print("Setting Background is not implemented.")
 
@@ -73,6 +73,8 @@ class PseudoVoigtMixtureModel:
         org_K = self.K
         if param_keys >= {'K'}:
             self.K = param['K']
+        else:
+            param['K'] = self.K
 
         # setting parameters for each single Lorentzian model.
         single_params = []
@@ -100,27 +102,27 @@ class PseudoVoigtMixtureModel:
         # setting parameters for Background.
         if self.background == 'none':
             self.K_all = self.K
-        # elif self.background == 'uniform':
-        #     self.K_all = self.K + 1
-        #     self.model.append(UniformModel(self.x_min, self.x_max))
-        # elif self.background == 'squareroot':
-        #     self.K_all = self.K + 1
-        #     self.model.append(SquareRootModel(self.x_min, self.x_max))
-        # elif self.background == 'linear':
-        #     self.K_all = self.K + 1
-        #     if ('s_tri' in param) and (0 <= param['s_tri'] <= 1.0):
-        #         self.model.append(LinearModel(self.x_min, self.x_max, s_tri=param['s_tri']))
-        #     else:
-        #         self.model.append(LinearModel(self.x_min, self.x_max))
-        # elif self.background == 'ramp_sum':
-        #     self.K_all = self.K + self.k_ramp + 2
-        #     self.ramp_node = np.linspace(self.x_min, self.x_max, self.k_ramp + 1, endpoint=False)
-        #     #self.pi = np.append(self.pi, np.random.rand(self.k_ramp + 2))
-        #     #self.pi = self.pi / np.sum(self.pi)
-        #     self.model.append(UniformModel(self.x_min, self.x_max))
-        #     for k in range(self.k_ramp):
-        #         self.model.append(RampModel(self.ramp_node[k], self.ramp_node[k + 1], self.x_max))
-        #     self.model.append(TriangleModel(self.ramp_node[-1], self.x_max))
+        elif self.background == 'uniform':
+            self.K_all = self.K + 1
+            self.model.append(UniformModel(self.x_min, self.x_max))
+        elif self.background == 'squareroot':
+            self.K_all = self.K + 1
+            self.model.append(SquareRootModel(self.x_min, self.x_max))
+        elif self.background == 'linear':
+            self.K_all = self.K + 1
+            if ('s_tri' in param) and (0 <= param['s_tri'] <= 1.0):
+                self.model.append(LinearModel(self.x_min, self.x_max, s_tri=param['s_tri']))
+            else:
+                self.model.append(LinearModel(self.x_min, self.x_max))
+        elif self.background == 'ramp_sum':
+            self.K_all = self.K + self.k_ramp + 2
+            self.ramp_node = np.linspace(self.x_min, self.x_max, self.k_ramp + 1, endpoint=False)
+            #self.pi = np.append(self.pi, np.random.rand(self.k_ramp + 2))
+            #self.pi = self.pi / np.sum(self.pi)
+            self.model.append(UniformModel(self.x_min, self.x_max))
+            for k in range(self.k_ramp):
+                self.model.append(RampModel(self.ramp_node[k], self.ramp_node[k + 1], self.x_max))
+            self.model.append(TriangleModel(self.ramp_node[-1], self.x_max))
 
         # setting mixture ratio pi, N, and N_tot
         if param_keys >= {'N'}:
@@ -161,12 +163,12 @@ class PseudoVoigtMixtureModel:
         _tmp_param['gamma'] = list(np.array(_tmp_gamma)[_tmp_index])
         _tmp_param['eta'] = list(np.array(_tmp_eta)[_tmp_index])
 
-        # if self.background is 'linear':
-        #     s_in_linear = [self.model[-1].s_uni, self.model[-1].s_tri]
-        # self.set_param(**_tmp_param)
-        # if self.background is 'linear':
-        #     self.model[-1].s_uni = s_in_linear[0]
-        #     self.model[-1].s_tri = s_in_linear[1]
+        if self.background is 'linear':
+            s_in_linear = [self.model[-1].s_uni, self.model[-1].s_tri]
+        self.set_param(**_tmp_param)
+        if self.background is 'linear':
+            self.model[-1].s_uni = s_in_linear[0]
+            self.model[-1].s_tri = s_in_linear[1]
         _tmp_param['pi'][0:self.K] = list(np.array(self.pi)[0:self.K][_tmp_index])
         _tmp_param['N'] = list(np.array(_tmp_param['pi'])*self.N_tot)
         return _tmp_param
@@ -187,12 +189,12 @@ class PseudoVoigtMixtureModel:
             stdout=True, trial=10, criteria='likelihood'):
         self.x_min = np.min(x)
         self.x_max = np.max(x)
-        # if self.background is "uniform":
-        #    self.model[-1] = UniformModel(self.x_min, self.x_max)
-        # if self.background is "squareroot":
-        #        self.model[-1] = SquareRootModel(self.x_min, self.x_max)
-        # if self.background is "linear":
-        #    self.model[-1] = LinearModel(self.x_min, self.x_max)
+        if self.background is "uniform":
+           self.model[-1] = UniformModel(self.x_min, self.x_max)
+        if self.background is "squareroot":
+               self.model[-1] = SquareRootModel(self.x_min, self.x_max)
+        if self.background is "linear":
+           self.model[-1] = LinearModel(self.x_min, self.x_max)
 
         if method is 'leastsq':
             info = self.leastsq(x, intensity, stdout)
@@ -290,7 +292,6 @@ class PseudoVoigtMixtureModel:
         t_tot = 0
         LL_hist = []
         res_hist = []
-        #ll_0 = self.log_likelihood(T_bin, freq)
         ll_0 = self.log_likelihood(x, intensity)
         flag = True
         ll = 0.0
@@ -301,12 +302,9 @@ class PseudoVoigtMixtureModel:
         t1 = time.time()
 
         for it in tmp_it:
-            #self.e_step(T_bin)
-            #self.m_step(T_bin, freq)
             self.e_step(x)
             self.m_step(x, intensity, r_eps)
 
-            #ll = self.log_likelihood(T_bin, freq)
             ll = self.log_likelihood(x, intensity)
             residual = (ll - ll_0) / np.abs(ll_0)
             t2 = time.time()
@@ -624,6 +622,11 @@ class PseudoVoigtMixtureModel:
             for k in range(self.K):
                 ax.plot(x, self.model[k].predict(x) * self.N[k], label='model_' + str(k))
             y = self.model[-1].predict(x) * self.N[-1] + self.model[-2].predict(x) * self.N[-2]
+            ax.plot(x, y, label=self.background)
+        elif self.background is 'ramp_sum':
+            for k in range(self.K):
+                ax.plot(x, self.model[k].predict(x) * self.N[k], label='model_' + str(k))
+            y = np.sum([self.model[self.K+k].predict(x) * self.N[self.K+k] for k in range(self.k_ramp+2)], axis=0)
             ax.plot(x, y, label=self.background)
         else:
             for k in range(self.K):
