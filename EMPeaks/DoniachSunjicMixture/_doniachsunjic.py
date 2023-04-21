@@ -1,3 +1,7 @@
+# License: BSD-3-clause
+# Copyright © 2020-2023 National Institute of Advanced Industrial Science and Technology (AIST)
+# Author: Yasunobu ANDO
+
 import numpy as np
 import matplotlib.pyplot as plt
 from scipy import optimize

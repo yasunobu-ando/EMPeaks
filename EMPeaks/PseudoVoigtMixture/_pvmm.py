@@ -1,5 +1,9 @@
+# License: BSD-3-clause
+# Copyright © 2020-2023 National Institute of Advanced Industrial Science and Technology (AIST)
+# Author: Yasunobu ANDO
+
 from EMPeaks.PseudoVoigtMixture._pseudo_voigt import PseudoVoigt
-from EMPeaks.GaussianMixture._gmm2 import GaussianMixtureModel
+from EMPeaks.EMCore._em_core import EMCore
 from EMPeaks.Background import UniformModel, SquareRootModel, LinearModel, TriangleModel, RampModel
 from scipy import integrate
 from scipy import optimize
@@ -9,7 +13,7 @@ import copy
 import time
 
 
-class PseudoVoigtMixtureModel(GaussianMixtureModel):
+class PseudoVoigtMixtureModel(EMCore):
     """
     class Mixture(K, Background)
     K: mixture component of Lorentzian

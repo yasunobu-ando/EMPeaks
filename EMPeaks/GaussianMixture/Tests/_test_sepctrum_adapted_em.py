@@ -3,7 +3,7 @@
 
 
 from EMPeaks.GaussianMixture.Tests._test_data import TestData
-from EMPeaks.GaussianMixture._spectrum_adapted_em import SpectrumAdaptedEM
+from EMPeaks.GaussianMixture.original._spectrum_adapted_em import SpectrumAdaptedEM
 
 
 def test_spectrum_adapted_em(N=10000, sampling=1):

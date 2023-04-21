@@ -1,14 +1,18 @@
-from EMPeaks.GaussianMixture._gaussian import Gaussian
+# License: BSD-3-clause
+# Copyright © 2023 National Institute of Advanced Industrial Science and Technology (AIST)
+# Author: Yasunobu ANDO
+
+from EMPeaks.EMCore._gaussian import Gaussian
 from EMPeaks.Background import UniformModel, SquareRootModel, LinearModel, TriangleModel, RampModel
-import numpy as np
 from scipy import integrate
 from scipy import optimize
+import numpy as np
 import matplotlib.pyplot as plt
 import copy
 import time
 
 
-class GaussianMixtureModel:
+class EMCore:
     def __init__(self, K=2, x_min=-300, x_max=300, sigma_min=0.1, sigma_max=50,
                  background='none', k_ramp=5):
         self.K = K
@@ -109,7 +113,11 @@ class GaussianMixtureModel:
                 return
 
     def set_param_background(self, **param):
-        # setting parameters for Background.
+        """
+        # setting parameters for Background. (in _em_core.py)
+        :param param:
+        :return:
+        """
         if self.background == 'none':
             self.K_all = self.K
 
@@ -400,6 +408,11 @@ class GaussianMixtureModel:
         return run_info
 
     def print_param_summary(self, param):
+        """
+        This function depends on a mixture model. Please define in a setting files of new mixture models.
+        :param param:
+        :return:
+        """
         print('   mu:        ' + ('{:5.3f} eV       ' * len(param['mu'])).format(*param['mu']))
         print('   sigma:     ' + ('{:6.3e}          ' * len(param['sigma'])).format(*param['sigma']))
         print('   N_tot:   {:6.3e} '.format(self.N_tot))

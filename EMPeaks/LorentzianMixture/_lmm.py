@@ -1,6 +1,10 @@
+# License: BSD-3-clause
+# Copyright © 2020-2023 National Institute of Advanced Industrial Science and Technology (AIST)
+# Author: Yasunobu ANDO
+
+from EMPeaks.EMCore._em_core import EMCore
 from EMPeaks.LorentzianMixture._lorentz import Lorentzian
-from EMPeaks.GaussianMixture._gmm2 import GaussianMixtureModel
-from EMPeaks.Background import UniformModel, SquareRootModel, LinearModel, TriangleModel, RampModel
+from ..Background import UniformModel, SquareRootModel, LinearModel, TriangleModel, RampModel
 from scipy import integrate
 from scipy import optimize
 import matplotlib.pyplot as plt
@@ -9,7 +13,7 @@ import copy
 import time
 
 
-class LorentzianMixtureModel(GaussianMixtureModel):
+class LorentzianMixtureModel(EMCore):
     """
     class Mixture(K, Background)
     K: mixture component of Lorentzian
@@ -20,7 +24,6 @@ class LorentzianMixtureModel(GaussianMixtureModel):
         self.gamma_min = gamma_min
         self.gamma_max = gamma_max
         self.model[0:K] = [Lorentzian(x_min, x_max, gamma_min, gamma_max) for k in range(self.K)]
-
 
     def set_single_params(self, **param):
         # setting parameters for each single Gaussian model.
