@@ -3,7 +3,7 @@
 # Author: Yasunobu ANDO
 
 from EMPeaks.EMCore._gaussian import Gaussian
-from EMPeaks.Background import UniformModel, SquareRootModel, LinearModel, TriangleModel, RampModel
+from EMPeaks.Background import UniformModel, SquareRootModel, LinearModel, TriangleModel, RampModel, SplineBasisModel
 from scipy import integrate
 from scipy import optimize
 import numpy as np
@@ -14,7 +14,7 @@ import time
 
 class EMCore:
     def __init__(self, K=2, x_min=-300, x_max=300, sigma_min=0.1, sigma_max=50,
-                 background='none', k_ramp=5):
+                 background='none', k_ramp=5, degree_spline=3, n_section=3):
         self.K = K
         self.x_min = x_min
         self.x_max = x_max
@@ -54,6 +54,19 @@ class EMCore:
             for k in range(k_ramp):
                  self.model.append(RampModel(self.ramp_node[k], self.ramp_node[k + 1], self.x_max))
             self.model.append(TriangleModel(self.ramp_node[-1], self.x_max))
+        elif self.background == 'b_spline':
+            print("B-Spline Background is set.")
+            self.degree_spline = degree_spline
+            self.n_section = n_section
+            self.n_spline_basis = n_section + degree_spline
+            self.K_all = K + self.n_spline_basis
+
+            self.pi = np.append(self.pi, np.random.rand(self.n_spline_basis))
+            self.pi = self.pi / np.sum(self.pi)
+
+        for k in range(self.n_spline_basis):
+            self.model.append(SplineBasisModel(self.xmin,self.x_max, self.degree_spline, self.n_section, k))
+
         #elif self.background == 'sharley':
         #    print("Sharley Background is set.")
         #    self.K_all = K + 2
@@ -112,9 +125,19 @@ class EMCore:
                 self.pi = np.ones(self.K_all) / self.K_all
                 return
 
+    def set_single_params(self, **param):
+        # setting parameters for each single Gaussian model.
+        param_set = {"mu", "sigma"}
+        single_params = self.extract_single_params(param_set, **param)
+        self.model = [Gaussian(self.x_min, self.x_max, self.sigma_min, self.sigma_max) for k in range(self.K)]
+        [self.model[k].set_param(**single_params[k]) for k in range(self.K)]
+        return
+
     def set_param_background(self, **param):
         """
-        # setting parameters for Background. (in _em_core.py)
+        # setting parameters for Background. (in _em_core.py),
+        In set_single_params, self.model is reconstructed.
+        Then, we need to reset background model same as __init__().
         :param param:
         :return:
         """
@@ -145,6 +168,11 @@ class EMCore:
                 self.model.append(RampModel(self.ramp_node[k], self.ramp_node[k + 1], self.x_max))
             self.model.append(TriangleModel(self.ramp_node[-1], self.x_max))
 
+        elif self.background == 'b-spline':
+            self.K_all == self.K + self.n_spline_basis
+            for k in range(self.n_spline_basis):
+                self.model.append(SplineBasisModel(self.xmin, self.x_max, self.degree_spline, self.n_section, k))
+
         # elif self.background == 'sharley':
         #     self.K_all = self.K + 2
         #     self.model.append(UniformModel(self.x_min, self.x_max))
@@ -174,14 +202,6 @@ class EMCore:
                 self.__setattr__(key, param[key])
 
         return single_params
-
-    def set_single_params(self, **param):
-        # setting parameters for each single Gaussian model.
-        param_set = {"mu", "sigma"}
-        single_params = self.extract_single_params(param_set, **param)
-        self.model = [Gaussian(self.x_min, self.x_max, self.sigma_min, self.sigma_max) for k in range(self.K)]
-        [self.model[k].set_param(**single_params[k]) for k in range(self.K)]
-        return
 
     def export_param(self):
         _tmp_param = self.__dict__
