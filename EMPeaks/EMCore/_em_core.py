@@ -224,7 +224,6 @@ class EMCore:
 
     def fit(self, x, intensity, method='adapted_em', max_iter=3000, r_eps=1e-9,
             stdout=True, trial=10, criteria='likelihood'):
-        print("**** Start spectrum fitting via EM algorithm ****")
         print("background: {}".format(self.background))
 
         self.x_min = np.min(x)
@@ -245,14 +244,17 @@ class EMCore:
         #     self.model.append(Sharley(self.K, self.x_min, self.x_max))
 
         if method == 'leastsq':
+            print("**** Start spectrum fitting via Least-Square algorithm ****")
             info = self.leastsq(x, intensity, stdout)
             return info
 
         if method == 'l2div':
+            print("**** Start spectrum fitting via L2-divergence based algorithm ****")
             info = self.l2_div(x, intensity, stdout)
             return info
 
         elif method == 'adapted_em':
+            print("**** Start spectrum fitting via EM algorithm ****")
             info = self.adapted_em(x, intensity, max_iter, r_eps, stdout)
             return info
 
