@@ -9,6 +9,7 @@ from scipy import optimize
 import matplotlib.pyplot as plt
 import numpy as np
 import time
+import copy
 
 
 class TSDCMixtureModel(EMCore):
@@ -30,8 +31,8 @@ class TSDCMixtureModel(EMCore):
         self.dT = 1.0
         self.model = [TSDC(beta, T_min, T_max, Ea_min, Ea_max) for k in range(self.K)]
         self.set_param_background()
-        self.P0_tot = 1.0
-        self.P0 = self.pi * self.P0_tot
+        self.N_tot = 1.0
+        self.N = self.pi * self.N_tot
 
     def set_single_params(self, **param):
         # setting parameters for each single Gaussian model.
@@ -55,34 +56,34 @@ class TSDCMixtureModel(EMCore):
         self.set_param_background(**param)
 
         param_keys = set(param.keys())
-        if param_keys >= {'P0'}:
-            self.P0 = param['P0']
-            self.P0_tot = np.sum(param['P0'])
-            self.pi = param['P0'] / self.P0_tot
+        if param_keys >= {'N'}:
+            self.N = param['N']
+            self.N_tot = np.sum(param['N'])
+            self.pi = param['N'] / self.N_tot
             return
 
-        # setting mixture ratio pi, P0, and P0_tot
-        if param_keys >= {'P0'}:
-            self.P0 = param['P0']
-            self.P0_tot = np.sum(param['P0'])
-            self.pi = param['P0']/self.P0_tot
+        # setting mixture ratio pi, N, and N_tot
+        if param_keys >= {'N'}:
+            self.N = param[('N')]
+            self.N_tot = np.sum(param['N'])
+            self.pi = param['N']/self.N_tot
             return
 
         if param_keys >= {'pi'}:
-            if type(param['pi']) is not list:
+            if type(param['pi']) != list:
                 print("Parameter \"pi\" is not list type. Then pi is uniformly set as default.")
                 self.pi = np.ones(self.K_all) / self.K_all
                 return
-            if len(param["pi"]) is self.K_all:
+            if len(param["pi"]) == self.K_all:
                 self.pi = np.array(param['pi']) / sum(param['pi'])
-                if sum(param["pi"]) is not 1.0:
+                if sum(param["pi"]) != 1.0:
                     print("Sum of \"pi\" must be unity. Then values are normalized as ", self.pi)
                 return
-            elif len(param["pi"]) is self.K:
+            elif len(param["pi"]) == self.K:
                 print("Parameter \"pi\" does not have background ratio. pi for background is set to be 0.1.")
                 self.pi = np.array(param['pi']) / sum(param['pi']) * 0.9
                 self.pi = np.append(self.pi, 0.1)
-                if sum(param["pi"]) is not 1.0:
+                if sum(param["pi"]) != 1.0:
                     print("Sum of \"pi\" must be unity. Then values are normalized as ", self.pi)
                 return
             else:
@@ -93,13 +94,13 @@ class TSDCMixtureModel(EMCore):
     def export_param(self):
         _tmp_param = self.__dict__
         _tmp_param, _tmp_index = self.export_single_params(_tmp_param)
-        if self.background is 'linear':
+        if self.background == 'linear':
             s_in_linear = [self.model[-1].s_uni, self.model[-1].s_tri]
-        if self.background is 'linear':
+        if self.background == 'linear':
             self.model[-1].s_uni = s_in_linear[0]
             self.model[-1].s_tri = s_in_linear[1]
         _tmp_param['pi'][0:self.K] = list(np.array(self.pi)[0:self.K][_tmp_index])
-        _tmp_param['P0'] = list(np.array(_tmp_param['pi']) * self.P0_tot)
+        _tmp_param['N'] = list(np.array(_tmp_param['pi']) * self.N_tot)
         self.set_param(**_tmp_param)
         return _tmp_param
 
@@ -120,12 +121,12 @@ class TSDCMixtureModel(EMCore):
     def init_param_empirical(self, T, intensity):
         self.pi = np.random.rand(self.K_all)
         self.pi = self.pi/self.pi.sum()
-        self.P0 = self.pi * self.P0_tot
+        self.N = self.pi * self.N_tot
         [self.model[k].set_param_empirical(T, intensity) for k in range(self.K)]
         return
 
     def add_hist_model(self, info, hist_model, trial):
-        info.update({'P0_tot_hist': np.array([hist_model[i]['P0_tot'] for i in range(trial)]),
+        info.update({'N_tot_hist': np.array([hist_model[i]['N_tot'] for i in range(trial)]),
                      'Ea_hist': np.array([hist_model[i]['Ea'] for i in range(trial)]),
                      'tau0_hist': np.array([hist_model[i]['tau0'] for i in range(trial)]),
                      'Tp_hist': np.array([hist_model[i]['Tp'] for i in range(trial)])})
@@ -135,31 +136,30 @@ class TSDCMixtureModel(EMCore):
         print('   Ea:       ' + ('{:5.3f} eV        ' * len(param['Ea'])).format(*param['Ea']))
         print('   tau0:     ' + ('{:6.3e} s     ' * len(param['tau0'])).format(*param['tau0']))
         print('   Tp:       ' + ('{:6.3e} K     ' * len(param['Tp'])).format(*param['Tp']))
-        print('   P0_tot:   {:6.3e} '.format(self.P0_tot))
-        print('   P0:       ' + ('{:6.3e}       ' * len(param['pi'])).format(*param['pi'] * self.P0_tot))
+        print('   N_tot:   {:6.3e} '.format(self.N_tot))
+        print('   N:       ' + ('{:6.3e}       ' * len(param['pi'])).format(*param['pi'] * self.N_tot))
         print('   pi:       ' + ('{:6.3e}       ' * len(param['pi'])).format(*param['pi']))
         return
 
     def leastsq(self, T, intensity, stdout):
         print("Starting TSDC fitting via least square method.")
-        print("Fitting parameters are Ea, Tp, pi, and P0_tot.")
-        self._gamma =np.array([[T] for k in range(self.K_all)])
+        print("Fitting parameters are {Ea, Tp, pi, and N_tot.}")
 
         def TSDC(T, param):
             dict_param = {"K":self.K, "Tp": list(param[0:self.K]),
                     "Ea": list(param[self.K:2*self.K]),
-                    'P0': list(param[2*self.K:3*self.K+self.K_all])
+                    'N': list(param[2*self.K:3*self.K+self.K_all])
                     }
-            if self.background is 'linear':
+            if self.background == 'linear':
                 dict_param.update({'s_tri': param[-1]})
             self.set_param(**dict_param)
-            return self.predict(T) * self.P0_tot * self.beta
+            return self.predict(T) * self.N_tot #* self.beta
 
         def residual(param, x, y):
             return y - TSDC(x, param)
 
         init_param = np.zeros(2*self.K + self.K_all)
-        init_param[0:self.K] = [self.model[k].Tp for k in range(self.K)]
+        init_param[0:self.K] = [self.model[k].Tp[0] for k in range(self.K)]
         init_param[self.K:2*self.K] = [self.model[k].Ea for k in range(self.K)]
         init_param[2*self.K:2*self.K + self.K_all] = self.pi * integrate.trapz(intensity, T)/self.beta
 
@@ -171,7 +171,7 @@ class TSDCMixtureModel(EMCore):
         [lb.append(0.0) for i in range(self.K_all)]
         [ub.append(np.inf) for i in range(self.K_all)]
 
-        if self.background is 'linear':
+        if self.background == 'linear':
             init_param = np.append(init_param, np.random.rand() * 1000)
             lb.append(-1000)
             ub.append(1000)
@@ -189,26 +189,28 @@ class TSDCMixtureModel(EMCore):
 
         except ValueError:
             print("ValueError: Least square method is failed.")
+            ls = {'success':False}
             opt_param = init_param
             rmse = np.nan
         except RuntimeError:
             print("RuntimeError: Least square method is failed.")
+            ls = {'success':False}
             opt_param = init_param
             rmse = np.nan
 
         param_dict = {"K":self.K, "Tp": list(opt_param[0:self.K]),
                       "Ea": list(opt_param[self.K:2*self.K]),
-                      'P0': list(opt_param[2*self.K:2*self.K + self.K_all])}
+                      'N': list(opt_param[2*self.K:2*self.K + self.K_all])}
 
-        hessian = np.dot(ls['jac'].T, ls['jac'])
-        det = np.linalg.det(hessian)
-        dim = init_param.size
-        print(det)
-        print("Estimated log Marginal likelihood via Laplace method:",
-               - T.size/2 * np.log(2*np.pi* ls['cost']*2/T.size) - T.size/2
-               + dim/2.0 * np.log(2*np.pi) - 1/2.0 * np.log(det)
-              )
-        print("BIC: ", T.size * np.log(ls['cost']*2/T.size) + dim * np.log(T.size))
+        #hessian = np.dot(ls['jac'].T, ls['jac'])
+        #det = np.linalg.det(hessian)
+        #dim = init_param.size
+        #print(det)
+        #print("Estimated log Marginal likelihood via Laplace method:",
+        #       - T.size/2 * np.log(2*np.pi* ls['cost']*2/T.size) - T.size/2
+        #       + dim/2.0 * np.log(2*np.pi) - 1/2.0 * np.log(det)
+        #      )
+        #print("BIC: ", T.size * np.log(ls['cost']*2/T.size) + dim * np.log(T.size))
 
         self.set_param(**param_dict)
         t_tot = time.time() - start
@@ -225,37 +227,37 @@ class TSDCMixtureModel(EMCore):
         }
 
         param = self.export_param()
-        if ls['success'] is True:
+        if ls['success'] == True:
             print("   non-linear least-square optimization is successfully finished.")
             print("            RMSE:      {:12.6e}\n"
                   "    Elapsed time:      {:12.6e} s\n".format(rmse, t_tot))
             print('Estimated model parameters and scores are following:')
             print('   Ea:       ' + ('{:5.3f} eV        ' * len(param['Ea'])).format(*param['Ea']))
             print('   tau0:     ' + ('{:6.3e} s     ' * len(param['tau0'])).format(*param['tau0']))
-            print('   P0_tot:   {:6.3e} '.format(self.P0_tot))
-            print('   P0:       ' + ('{:6.3e}       ' * len(param['pi'])).format(*np.array(param['pi']) * self.P0_tot))
+            print('   N_tot:   {:6.3e} '.format(self.N_tot))
+            print('   N:       ' + ('{:6.3e}       ' * len(param['pi'])).format(*np.array(param['pi']) * self.N_tot))
             print('   pi:       ' + ('{:6.3e}       ' * len(param['pi'])).format(*param['pi']))
             print('   RMSE:     {:12.8e}\n'.format(rmse))
         else:
             print("   Warning: non-linear least-square optimization is failed.")
-
         return run_info
 
     def leastsq_tau0(self, T, intensity, stdout):
         print("Starting TSDC fitting via least square method.")
-        print("Fitting parameters are Ea, tau0, pi, and P0_tot.")
+        print("Fitting parameters are {Ea, tau0, pi, and N_tot.}")
 
         def TSDC(T, param):
             dict = {"K": self.K, "tau0": list(param[0:self.K]),
                     "Ea": list(param[self.K:2 * self.K]),
-                    'P0': list(param[2 * self.K:3 * self.K + self.K_all])
+                    'N': list(param[2 * self.K:3 * self.K + self.K_all])
                     }
             self.set_param(**dict)
-            return self.predict(T) * self.P0_tot * self.beta
+            return self.predict(T) * self.N_tot * self.beta
 
         def residual(param, x, y):
             return y - TSDC(x, param)
-
+        self.init_param_empirical(T, intensity)
+        print([self.model[k].tau0 for k in range(self.K)])
         init_param = np.zeros(2 * self.K + self.K_all)
         init_param[0:self.K] = [self.model[k].tau0 for k in range(self.K)]
         init_param[self.K:2 * self.K] = [self.model[k].Ea for k in range(self.K)]
@@ -289,7 +291,7 @@ class TSDCMixtureModel(EMCore):
 
         param_dict = {"K": self.K, "tau0": list(opt_param[0:self.K]),
                       "Ea": list(opt_param[self.K:2*self.K]),
-                      'P0': list(opt_param[2*self.K:2*self.K + self.K_all])}
+                      'N': list(opt_param[2*self.K:2*self.K + self.K_all])}
         self.set_param(**param_dict)
         t_tot = time.time() - start
 
@@ -305,15 +307,15 @@ class TSDCMixtureModel(EMCore):
         }
 
         param = self.export_param()
-        if rmse is not np.nan:
+        if rmse != np.nan:
             print("   non-linear least-square optimization is successfully finished.")
             print("            RMSE:      {:12.6e}\n"
                   "    Elapsed time:      {:12.6e} s\n".format(rmse, t_tot))
             print('Estimated model parameters and scores are following:')
             print('   Ea:       ' + ('{:5.3f} eV        ' * len(param['Ea'])).format(*param['Ea']))
             print('   tau0:     ' + ('{:6.3e} s     ' * len(param['tau0'])).format(*param['tau0']))
-            print('   P0_tot:   {:6.3e} '.format(self.P0_tot))
-            print('   P0:       ' + ('{:6.3e}       ' * len(param['pi'])).format(*np.array(param['pi']) * self.P0_tot))
+            print('   N_tot:   {:6.3e} '.format(self.N_tot))
+            print('   N:       ' + ('{:6.3e}       ' * len(param['pi'])).format(*np.array(param['pi']) * self.N_tot))
             print('   pi:       ' + ('{:6.3e}       ' * len(param['pi'])).format(*param['pi']))
             print('   RMSE:     {:12.8e}\n'.format(rmse))
 
@@ -325,7 +327,7 @@ class TSDCMixtureModel(EMCore):
     def l2_div(self, T, intensity, stdout):
         print("Starting TSDC fitting via least square method.")
         print("L2 divergence based estimation.")
-        print("Fitting parameters are Ea, Tp, pi, and P0_tot.")
+        print("Fitting parameters are Ea, Tp, pi, and N_tot.")
 
         T_bin = np.arange(self.T_min, self.T_max, self.dT)
         freq = np.zeros(T_bin.size)
@@ -339,9 +341,9 @@ class TSDCMixtureModel(EMCore):
         def TSDC(T, param):
             dict_param = {"K":self.K, "Tp": list(param[0:self.K]),
                     "Ea": list(param[self.K:2*self.K]),
-                    'P0': list(param[2*self.K:3*self.K+self.K_all])
+                    'N': list(param[2*self.K:3*self.K+self.K_all])
                     }
-            if self.background is 'linear':
+            if self.background == 'linear':
                 dict_param.update({'s_tri': param[-1]})
             self.set_param(**dict_param)
             return self.predict(T) * Z
@@ -362,7 +364,7 @@ class TSDCMixtureModel(EMCore):
         [lb.append(0.0) for i in range(self.K_all)]
         [ub.append(np.inf) for i in range(self.K_all)]
 
-        if self.background is 'linear':
+        if self.background == 'linear':
             init_param = np.append(init_param, np.random.rand() * 1000)
             lb.append(-1000)
             ub.append(1000)
@@ -387,11 +389,11 @@ class TSDCMixtureModel(EMCore):
             opt_param = init_param
             rmse = np.nan
 
-        P0 = np.array(opt_param[2 * self.K:2 * self.K + self.K_all])
-        P0 = P0/(P0.sum()*self.beta) * Z
+        N = np.array(opt_param[2 * self.K:2 * self.K + self.K_all])
+        N = N/(N.sum()*self.beta) * Z
         param_dict = {"K":self.K, "Tp": list(opt_param[0:self.K]),
                       "Ea": list(opt_param[self.K:2*self.K]),
-                      'P0': list(P0)}
+                      'N': list(N)}
 
         self.set_param(**param_dict)
         t_tot = time.time() - start
@@ -408,15 +410,15 @@ class TSDCMixtureModel(EMCore):
         }
 
         param = self.export_param()
-        if ls['success'] is True:
+        if ls['success'] == True:
             print("   non-linear least-square optimization is successfully finished.")
             print("            RMSE:      {:12.6e}\n"
                   "    Elapsed time:      {:12.6e} s\n".format(rmse, t_tot))
             print('Estimated model parameters and scores are following:')
             print('   Ea:       ' + ('{:5.3f} eV        ' * len(param['Ea'])).format(*param['Ea']))
             print('   tau0:     ' + ('{:6.3e} s     ' * len(param['tau0'])).format(*param['tau0']))
-            print('   P0_tot:   {:6.3e} '.format(self.P0_tot))
-            print('   P0:       ' + ('{:6.3e}       ' * len(param['pi'])).format(*np.array(param['pi']) * self.P0_tot))
+            print('   N_tot:   {:6.3e} '.format(self.N_tot))
+            print('   N:       ' + ('{:6.3e}       ' * len(param['pi'])).format(*np.array(param['pi']) * self.N_tot))
             print('   pi:       ' + ('{:6.3e}       ' * len(param['pi'])).format(*param['pi']))
             print('   RMSE:     {:12.8e}\n'.format(rmse))
         else:
@@ -427,7 +429,7 @@ class TSDCMixtureModel(EMCore):
     def regularization(self, T, intensity):
         print("Starting TSDC fitting via regularized least square method.")
         print("L2 divergence based estimation.")
-        print("Fitting parameters are Ea, Tp, pi, and P0_tot.")
+        print("Fitting parameters are Ea, Tp, pi, and N_tot.")
 
         T_bin = np.arange(self.T_min, self.T_max, self.dT)
         freq = np.zeros(T_bin.size)
@@ -441,9 +443,9 @@ class TSDCMixtureModel(EMCore):
         def TSDC(T, param):
             dict_param = {"K":self.K, "Tp": list(param[0:self.K]),
                     "Ea": list(param[self.K:2*self.K]),
-                    'P0': list(param[2*self.K:3*self.K+self.K_all])
+                    'N': list(param[2*self.K:3*self.K+self.K_all])
                     }
-            if self.background is 'linear':
+            if self.background == 'linear':
                 dict_param.update({'s_tri': param[-1]})
             self.set_param(**dict_param)
             return self.predict(T) * Z
@@ -464,7 +466,7 @@ class TSDCMixtureModel(EMCore):
         [lb.append(0.0) for i in range(self.K_all)]
         [ub.append(np.inf) for i in range(self.K_all)]
 
-        if self.background is 'linear':
+        if self.background == 'linear':
             init_param = np.append(init_param, np.random.rand() * 1000)
             lb.append(-1000)
             ub.append(1000)
@@ -503,11 +505,11 @@ class TSDCMixtureModel(EMCore):
             opt_param = init_param
             rmse = np.nan
 
-        P0 = np.array(opt_param[2 * self.K:2 * self.K + self.K_all])
-        P0 = P0/(P0.sum()*self.beta) * Z
+        N = np.array(opt_param[2 * self.K:2 * self.K + self.K_all])
+        N = N/(N.sum()*self.beta) * Z
         param_dict = {"K":self.K, "Tp": list(opt_param[0:self.K]),
                       "Ea": list(opt_param[self.K:2*self.K]),
-                      'P0': list(P0)}
+                      'N': list(N)}
 
         self.set_param(**param_dict)
         t_tot = time.time() - start
@@ -524,7 +526,7 @@ class TSDCMixtureModel(EMCore):
         }
 
         param = self.export_param()
-        if ls['success'] is True:
+        if ls['success'] == True:
             print("   non-linear least-square optimization is successfully finished.")
             print("            RMSE:      {:12.6e}\n"
                   "    Elapsed time:      {:12.6e} s\n".format(rmse, t_tot))
@@ -532,8 +534,8 @@ class TSDCMixtureModel(EMCore):
             print('   Ea:       ' + ('{:5.3f} eV        ' * len(param['Ea'])).format(*param['Ea']))
             print('   tau0:     ' + ('{:6.3e} s     ' * len(param['tau0'])).format(*param['tau0']))
             print('   Tp:       ' + ('{:6.3e} s     ' * len(param['Tp'])).format(*param['Tp']))
-            print('   P0_tot:   {:6.3e} '.format(self.P0_tot))
-            print('   P0:       ' + ('{:6.3e}       ' * len(param['pi'])).format(*np.array(param['pi']) * self.P0_tot))
+            print('   N_tot:   {:6.3e} '.format(self.N_tot))
+            print('   N:       ' + ('{:6.3e}       ' * len(param['pi'])).format(*np.array(param['pi']) * self.N_tot))
             print('   pi:       ' + ('{:6.3e}       ' * len(param['pi'])).format(*param['pi']))
             print('   RMSE:     {:12.8e}\n'.format(rmse))
         else:
@@ -541,3 +543,50 @@ class TSDCMixtureModel(EMCore):
 
         return run_info
 
+    def sampling(self, x, intensity, method='adapted_em', trial=10,
+                 max_iter=1000, r_eps=1e-7, criteria='likelihood', stdout=False):
+        hist_model = []
+        hist_run_info = []
+        for i in range(trial):
+            self.init_param_empirical(x, intensity)
+            print('* Starting Trial # {:3d}'.format(i))
+            run_info = self.fit(x, intensity, method=method, max_iter=max_iter, r_eps=r_eps, stdout=stdout)
+            tmp_param = copy.deepcopy(self.export_param())
+            hist_model.append(tmp_param)
+            hist_run_info.append(run_info)
+
+        hist_LL = np.array([hist_run_info[i]['LL'] for i in range(trial)])
+        hist_RMSE = np.array([hist_run_info[i]['RMSE'] for i in range(trial)])
+
+        print('Sampling the different initial guess with {:3d} trial is finished.'.format(trial))
+
+        if criteria == 'likelihood':
+            index_best = int(np.nanargmax(hist_LL))
+            print('Maximum Log-Likelihood is obtained in trial {:3d}'.format(index_best))
+        elif criteria == 'rmse':
+            index_sucess = ~np.isnan(hist_RMSE)
+            index_best = int(np.nanargmin(hist_RMSE[index_sucess]))
+            print(index_best)
+            print('Minimum RMSE is obtained in trial {:3d}'.format(index_best))
+        else:
+            index_best = 0
+
+        info = {'index_best': index_best,
+                'LL_hist': hist_LL,
+                'RMSE_hist': np.array([hist_run_info[i]['RMSE'] for i in range(trial)]),
+                'time_hist': np.array([hist_run_info[i]['total_time'] for i in range(trial)]),
+                'iter_hist': np.array([hist_run_info[i]['total_iter'] for i in range(trial)])
+                }
+
+        self.add_hist_model(info, hist_model, trial)
+
+        param = hist_model[index_best]
+        self.set_param(**param)
+
+        print('Best model parameters and scores of samples are following:')
+        self.print_param_summary(param)
+        print('   LL:      {:12.8e}\n'
+              '   RMSE:     {:12.8e}\n'.format(info['LL_hist'][index_best], info['RMSE_hist'][index_best])
+              )
+
+        return info

@@ -71,7 +71,7 @@ class TSDC:
 
         self.Tp = np.random.normal(Tp_mu, Tp_sigma, 1)
         self.Ea = np.random.uniform(self.Ea_min, self.Ea_max)
-        self.tau0 = self.get_tau0()
+        self.tau0 = self.get_tau0()[0]
         return
 
     def get_tau0(self):
@@ -150,8 +150,8 @@ class TSDC:
         index = np.array(np.where(z >= threshold)).T
         return index
 
-    def plot(self, T):
-        plt.plot(T, self.beta * self.P0 * self.predict(T))
+    def plot(self, T, label=""):
+        plt.plot(T, self.beta * self.P0 * self.predict(T), label=label)
         return
 
     def leastsq_tau0(self, T, intensity):

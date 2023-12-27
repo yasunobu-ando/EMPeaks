@@ -6,7 +6,7 @@ kB = 8.61733034e-5
 
 class TestData:
     data_param = {'K': 5,
-                  'P0': [4.0e+7, 5.0e+7, 10.0e+7, 1.0e+7, 8.0e+6],
+                  'N': [4.0e+7, 5.0e+7, 10.0e+7, 1.0e+7, 8.0e+6],
                   'Tp': [600, 685, 750, 530, 873],
                   'Ea': [1.2, 1.6, 1.0, 0.74, 2.4],
                   'T_min':  300,
@@ -18,7 +18,7 @@ class TestData:
             print("error: K must be the number between 1 to 5.")
             return
         param = {'K': K,
-                 'P0': TestData.data_param['P0'][0:K],
+                 'N': TestData.data_param['N'][0:K],
                  'Tp': TestData.data_param['Tp'][0:K],
                  'Ea': TestData.data_param['Ea'][0:K],
                  'beta': 0.0833,
@@ -32,7 +32,7 @@ class TestData:
         self.T_max = param['T_max']
         self.background = param['background']
 
-        self.P0_tot = sum(param['P0'])
+        self.N_tot = sum(param['N'])
         self.model = TSDCMixtureModel(background='none')
         self.model.set_param(**param)
         self.param = param
@@ -50,7 +50,7 @@ class TestData:
 
     def generate_data_with_noise(self):
         temp = self._temperature_sampling()
-        current = self.beta * self.P0_tot * self.model.predict(temp)
+        current = self.beta * self.N_tot * self.model.predict(temp)
         current += np.random.poisson(self.lambda_current, temp.size)
         return temp, current
 
@@ -60,9 +60,9 @@ class Data:
     Data(f_name=None, beta=0.0833, param=None)
     f_name: name of input csv format file. Data is generated if f_name =None.
     beta: temperature change per second. It is determined in experiment.
-    param: type dictionary {'K':positive integer, 'P0':list[K], 'tau0':list[K], 'Ea':list[K]}
+    param: type dictionary {'K':positive integer, 'N':list[K], 'tau0':list[K], 'Ea':list[K]}
         K: number of components
-        P0: initial polarization for each process
+        N: initial polarization for each process
         tau0: relaxation times for each process
         Ea: activation energy for each process
     """
@@ -77,11 +77,11 @@ class Data:
                 self.T = np.arange(self.temp0, self.temp1, self.dT)
                 self.N = self.T.size
 
-                P0 = np.array([6.0e+7, 4.0e+7])
+                N = np.array([6.0e+7, 4.0e+7])
                 tau0 = np.array([0.8e-6, 500.0e-6])
                 Ea = np.array([1.0, 0.6])
                 self.intensity = generate_data(self.T, self.N, 2,
-                                               P0, tau0, Ea, self.beta, self.temp0)
+                                               N, tau0, Ea, self.beta, self.temp0)
             else:
                 print("Data is generated according to setting parameters")
                 self.beta = 0.0833
@@ -91,11 +91,11 @@ class Data:
                 self.T = np.arange(self.temp0, self.temp1, self.dT)
                 self.N = self.T.size
 
-                P0 = param['P0']
+                N = param['N']
                 tau0 = param['tau0']
                 Ea = param['Ea']
                 self.intensity = generate_data(self.T, self.N, param['K'],
-                                               P0, tau0, Ea, self.beta, self.temp0)
+                                               N, tau0, Ea, self.beta, self.temp0)
         else:
             self.beta = beta
             self.read_csv(f_name)
@@ -141,8 +141,8 @@ class Data:
         print("Mixing number K: ", 2)
         print("Heating ratio beta: ", 0.0833)
         print("Temperature range: ", "from ", 300, "to", 850,"[K]")
-        print("Initial Polarization P0: ", 6.2, 4.0)
-        print("Total Initial Polarization P0: ", 10.0)
+        print("Initial Polarization N: ", 6.2, 4.0)
+        print("Total Initial Polarization N: ", 10.0)
         print("Exponential pre-factor tau0[us]: ", 6.2, 500)
         print("Activation Energy Ea[eV]: ", 1, 0.6)
         print("Temperature interval dT[K]: ", 1)
@@ -158,11 +158,11 @@ class Data:
         plt.show()
 
 
-def generate_data(T, N, K, P0, tau0, Ea, beta, temp0):
-    y = np.zeros(N)
-    for i in range(N):
+def generate_data(T, N_size, K, N, tau0, Ea, beta, temp0):
+    y = np.zeros(N_size)
+    for i in range(N_size):
         for k in range(K):
-            y[i] += P0[k] / (tau0[k] * 1e-6) * np.exp(-Ea[k] / kB / T[i]
+            y[i] += N[k] / (tau0[k] * 1e-6) * np.exp(-Ea[k] / kB / T[i]
                                                       - 1 / beta / (tau0[k] * 1e-6)
                                                       * integrate.quad(f, temp0, T[i], Ea[k])[0])
     return y/beta

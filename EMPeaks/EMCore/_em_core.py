@@ -253,6 +253,12 @@ class EMCore:
             info = self.l2_div(x, intensity, stdout)
             return info
 
+        if method == 'leastsq_tau0':
+            print("**** Start spectrum fitting via L2-divergence based algorithm ****")
+            print("**** leastsq_tau0 works only in TSDC model.")
+            info = self.leastsq_tau0(x, intensity, stdout)
+            return info
+
         elif method == 'adapted_em':
             print("**** Start spectrum fitting via EM algorithm ****")
             info = self.adapted_em(x, intensity, max_iter, r_eps, stdout)
