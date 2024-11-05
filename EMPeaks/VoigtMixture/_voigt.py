@@ -6,7 +6,6 @@ from scipy import optimize
 from scipy.special import voigt_profile
 from scipy.special import erf
 from scipy.integrate import quad
-from mpmath import hyp2f2
 import numpy as np
 
 
