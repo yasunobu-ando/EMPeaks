@@ -59,3 +59,13 @@ class Example:
         info = model.fit(T, np.abs(intensity), method='adapted_em', r_eps=1e-9)
         model.plot(T, intensity)
         plt.show()
+
+    def experimental_data_error_detection(self, K, fname):
+        T, intensity = np.loadtxt(fname, delimiter=',', unpack=True, skiprows=1)
+        intensity = intensity*1000
+        T = T + 273.15
+        model = TSDCMixtureModel(K=K, background='none', Ea_min=0.01, Ea_max=5.0, k_ramp=0)
+        info = model.sampling(T, np.abs(intensity), method='adapted_em', r_eps=1e-6, trial=50)
+        info = model.fit(T, np.abs(intensity), method='adapted_em', r_eps=1e-9)
+        model.plot(T, intensity)
+        plt.show()

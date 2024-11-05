@@ -35,8 +35,8 @@ class TSDCMixtureModel(EMCore):
         self.N = self.pi * self.N_tot
 
     def set_single_params(self, **param):
-        # setting parameters for each single Gaussian model.
-        param_set = {'Tp', 'Ea', 'tau0'}
+        # setting parameters for each single TSDC model.
+        param_set = {'Tp', 'Ea', 'tau0', 'is_not_converged'}
         single_params = self.extract_single_params(param_set, **param)
         self.model = [TSDC(self.beta, self.T_min, self.T_max, self.Ea_min, self.Ea_max) for k in range(self.K)]
         [self.model[k].set_param(**single_params[k]) for k in range(self.K)]
@@ -101,12 +101,14 @@ class TSDCMixtureModel(EMCore):
             self.model[-1].s_tri = s_in_linear[1]
         _tmp_param['pi'][0:self.K] = list(np.array(self.pi)[0:self.K][_tmp_index])
         _tmp_param['N'] = list(np.array(_tmp_param['pi']) * self.N_tot)
+
         self.set_param(**_tmp_param)
+
         return _tmp_param
 
     def export_single_params(self, _tmp_param):
         """ parameters are sorted in the order of the first element in param_set."""
-        param_set = {"Ea", "tau0", "Tp"}
+        param_set = {"Ea", "tau0", "Tp", "is_not_converged"}
         _tmp = {}
         for param in list(param_set):
             _tmp[param] = [self.model[k].__dict__[param] for k in range(self.K)]
@@ -547,14 +549,55 @@ class TSDCMixtureModel(EMCore):
                  max_iter=1000, r_eps=1e-7, criteria='likelihood', stdout=False):
         hist_model = []
         hist_run_info = []
+
+        # for reviewers comments
+        Ea_conv = np.array([])
+        Tp_conv = np.array([])
+        Ea_not_conv = np.array([])
+        Tp_not_conv = np.array([])
+
         for i in range(trial):
+            # first initialization
             self.init_param_empirical(x, intensity)
+            init_param = self.export_param()
+            print(init_param['Ea'])
+            for k in range(self.K):
+                self.model[k].is_not_converged[0] = init_param['Ea'][k]
+                self.model[k].is_not_converged[1] = init_param['Tp'][k]
+ 
             print('* Starting Trial # {:3d}'.format(i))
-            run_info = self.fit(x, intensity, method=method, max_iter=max_iter, r_eps=r_eps, stdout=stdout)
+            print("parameters are initialized as follows.")
+            print("\t Ea: ", init_param['Ea'])
+            print("\t Tp: ", list(init_param['Tp']))
+
+            print("")
+
+            run_info = self.fit(x, intensity, method=method, max_iter=max_iter, r_eps=r_eps, stdout=stdout)                
+
             tmp_param = copy.deepcopy(self.export_param())
             hist_model.append(tmp_param)
             hist_run_info.append(run_info)
 
+            print("<<<<<<fitting of trial {:d} is finished.<<<<<<<<<".format(i))
+            print("")
+
+            #>>> for reviewers comments
+            flag = np.array([False for i in range(self.K)])
+            flag = np.array(tmp_param["is_not_converged"]).T[2].astype(bool)
+            Ea_not_conv = np.append(Ea_not_conv, np.array(tmp_param["is_not_converged"]).T[0][flag])
+            Tp_not_conv = np.append(Tp_not_conv, np.array(tmp_param["is_not_converged"]).T[1][flag])
+
+            flag= ~flag
+            Ea_conv = np.append(Ea_conv, np.array(tmp_param["is_not_converged"]).T[0][flag])
+            Tp_conv = np.append(Tp_conv, np.array(tmp_param["is_not_converged"]).T[1][flag])
+
+        np.savetxt("conv.csv", np.array([Ea_conv, Tp_conv]).T, delimiter=",")
+        np.savetxt("not_conv.csv", np.array([Ea_not_conv, Tp_not_conv]).T, delimiter=",")
+
+        print("total count: ",np.size(Tp_conv)+np.size(Tp_not_conv))
+        print("error rate: ",np.size(Tp_not_conv)/(np.size(Tp_conv)+np.size(Tp_not_conv)))
+        # for reviewers comments <<<
+            
         hist_LL = np.array([hist_run_info[i]['LL'] for i in range(trial)])
         hist_RMSE = np.array([hist_run_info[i]['RMSE'] for i in range(trial)])
 

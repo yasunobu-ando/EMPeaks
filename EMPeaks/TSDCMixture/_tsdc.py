@@ -6,6 +6,7 @@ from scipy.special import expi, expn
 import matplotlib.pyplot as plt
 from scipy.stats import multivariate_normal
 import time
+
 kB=8.61733034e-5
 inv_kB = 1.0/kB
 
@@ -31,11 +32,14 @@ class TSDC:
         self.P0 = 1.0
         self.dT = 1.0
         self.dE = 0.1
+        self.is_not_converged = [0.0, 0.0, False] # detecting initial condition not converged.
+        self.fix_Tp = False
+        self.fix_Ea = False
 
     def set_param(self, **param):
         """
-        Tp_min, Tp_maxの代償関係についてのチェックは未実装
-        Ea_min, Ea_maxの代償関係についてのチェックは未実装
+        Tp_min, Tp_maxの大小関係についてのチェックは未実装
+        Ea_min, Ea_maxの大小関係についてのチェックは未実装
         """
         if not param:
             return self
@@ -60,16 +64,19 @@ class TSDC:
             return
 
     def init_model(self):
-        self.Tp = np.random.uniform(self.T_min, self.T_max)
-        self.Ea = np.random.uniform(self.Ea_min, self.Ea_max)
+        if not self.fix_Tp:
+            self.Tp = np.random.uniform(self.T_min, self.T_max)
+        if not self.fix_Ea:    
+            self.Ea = np.random.uniform(self.Ea_min, self.Ea_max)
         self.tau0 = self.get_tau0()
+        return
 
     def set_param_empirical(self, T, intensity):
         Tp_mu = np.sum(intensity * T) / np.sum(intensity)
         Tp_sigma = np.sqrt(np.sum(intensity * (T ** 2))
                            / np.sum(intensity) - Tp_mu ** 2)
 
-        self.Tp = np.random.normal(Tp_mu, Tp_sigma, 1)
+        self.Tp = np.random.normal(Tp_mu, Tp_sigma*0.5, 1)
         self.Ea = np.random.uniform(self.Ea_min, self.Ea_max)
         self.tau0 = self.get_tau0()[0]
         return
@@ -92,15 +99,36 @@ class TSDC:
 
     def maximum_likelihood_estimation(self, T, intensity):
         try:
-            # self.direct_minimization(T, intensity)
+            #self.direct_minimization(T, intensity)
             self.find_root(T, intensity)
             return
 
+        except RuntimeError:
+            print("RuntimeError: brentq failed. Switch to direct maximization of LL")
+            try:
+                self.gradient_minimization(T, intensity)
+                #print("direct minimization of LL finished.")
+                return
+
+            except RuntimeError:
+                print("RuntimeError_1: Log likelihood maximization failed. initialized Again.")
+                self.is_not_converged[2] = True
+                self.set_param_empirical(T, intensity)
+                return
+
         except ValueError:
-            print("A component does not have a physical solution of MLE. Initializing again.")
-            # print("There is no maxima. Switch to direct maximization.")
-            self.direct_minimization(T, intensity)
-            return
+            print("ValueError: brentq failed. Switch to direct maximization of LL")
+            # self.is_not_converged[2] = True
+            try:
+                self.gradient_minimization(T, intensity)
+                #print("direct minimization of LL finished.")
+                return
+
+            except RuntimeError:
+                print("RuntimeError_2: Log likelihood maximization failed. initialized Again.")
+                self.is_not_converged[2] = True
+                self.set_param_empirical(T, intensity)
+                return
 
     def log_likelihood(self, T, intensity):
         return np.sum(intensity * np.log(self.predict(T) + 1e-200))
@@ -145,7 +173,7 @@ class TSDC:
         grids = np.array([xv, yv]).T
         z = multivariate_normal.pdf(grids, mean=map_param, cov=cov)
         threshold = multivariate_normal.pdf(map_param + np.array([Tp_cutoff, 0]),
-                                            mean=map_param, cov=[sigma_Tp, sigma_Ea]) * (flag is not 0)
+                                            mean=map_param, cov=[sigma_Tp, sigma_Ea]) * (flag != 0)
 
         index = np.array(np.where(z >= threshold)).T
         return index
@@ -267,7 +295,7 @@ class TSDC:
 
         return opt_param, rmse
 
-    def direct_minimization(self, T, intensity):
+    def gradient_minimization(self, T, intensity):
         d1 = np.sum(intensity)
         d2 = np.sum(intensity/T * inv_kB)
 
@@ -283,14 +311,16 @@ class TSDC:
             template.Tp = param[1]
             template.tau0 = template.get_tau0()
 
-            bt = template.beta * template.tau0
+            beta_tau = template.beta * template.tau0
             ktp = kB * template.Tp
 
             d3 = np.sum(intensity * np.array(T * expn(2, template.Ea * inv_kB / T)))
             d3_p = - np.sum(intensity * inv_kB * np.array(expn(1, template.Ea * inv_kB / T)))
 
-            LL_e = d1 * (1.0 / template.Ea + 1.0 / ktp) - d2 - d3_p / bt - d3 / bt * (1.0 / template.Ea + 1.0 / ktp)
-            LL_t = (-d1 + d3 / bt) * (2.0 / template.Tp + template.Ea * inv_kB / template.Tp ** 2)
+            # LLの Ea微分
+            LL_e = (d1 - d3 / beta_tau) * (1.0 / template.Ea + 1.0 / ktp) - d2 - d3_p / beta_tau
+            # LLの Tp微分
+            LL_t = (-d1 + d3 / beta_tau) * (2.0 / template.Tp + template.Ea * inv_kB / template.Tp ** 2)
 
             return np.array([-LL_e, -LL_t])
 
@@ -312,7 +342,7 @@ class TSDC:
             return np.sum(Y * np.array(T * expn(2, E * inv_kB / T)))
 
         def f_g_diff(E, T, Y, beta):
-            eps = 1e-20
+            eps = 1e-10
             a = np.sum(Y / (kB * T)) + eps
             b = np.sum(Y) + eps
             g_sum = np.sum(Y * inv_kB * np.array(- expi(-E * inv_kB / T)))
