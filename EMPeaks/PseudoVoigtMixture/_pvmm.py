@@ -21,7 +21,7 @@ class PseudoVoigtMixtureModel(EMCore):
                 'none' : No background model is included.
 
     """
-    def __init__(self, K=2, x_min=-300, x_max=300, gamma_min=0.1, gamma_max=50,
+    def __init__(self, K=2, x_min=-300, x_max=300, gamma_min=0.1, gamma_max=75,
                  background='none', k_ramp=0):
         super().__init__(K=K, x_min=x_min, x_max=x_max, background=background, k_ramp=k_ramp)
         self.gamma_min = gamma_min

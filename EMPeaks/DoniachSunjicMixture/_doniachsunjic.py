@@ -17,7 +17,12 @@ class DoniachSunjic:
         self.gamma_max = gamma_max
         self.alpha_min = alpha_min
         self.alpha_max = alpha_max
-        self.x0, self.gamma, self.alpha = self.init_param()
+        self.x0 = np.random.uniform(self.x_min, self.x_max)
+        self.gamma = np.random.uniform(self.gamma_min, self.gamma_max)
+        self.alpha = np.random.uniform(self.alpha_min, self.alpha_max)
+        self.fix_x0 = False
+        self.fix_gamma = False
+        self.fix_alpha = False
 
     def set_param(self, **param):
         """
@@ -33,15 +38,16 @@ class DoniachSunjic:
         return
 
     def init_param(self):
-        x0 = np.random.uniform(self.x_min, self.x_max)
-        gamma = np.random.uniform(self.gamma_min, self.gamma_max)
-        alpha = np.random.uniform(self.alpha_min, self.alpha_max)
-        return x0, gamma, alpha
+        if not self.fix_x0:
+            x0 = np.random.uniform(self.x_min, self.x_max)
+        if not self.fix_gamma:
+            gamma = np.random.uniform(self.gamma_min, self.gamma_max)
+        if not self.fix_alpha:
+            alpha = np.random.uniform(self.alpha_min, self.alpha_max)
+        return 
 
     def init_model(self):
-        self.x0 = np.random.uniform(self.x_min, self.x_max)
-        self.gamma = np.random.uniform(self.gamma_min, self.gamma_max)
-        self.alpha = np.random.uniform(self.alpha_min, self.alpha_max)
+        self.init_param()
         return
 
     def predict(self, x):
@@ -58,7 +64,22 @@ class DoniachSunjic:
         return
 
     def maximum_likelihood_estimation(self, x, intensity):
-        self.full_optimization(x, intensity)
+        if [self.fix_x0, self.fix_gamma, self.fix_alpha] == [True, True, True]:
+            return
+        elif [self.fix_x0, self.fix_gamma, self.fix_alpha] == [False, False, False]:
+            self.full_optimization(x, intensity)
+        elif [self.fix_x0, self.fix_gamma, self.fix_alpha] == [True, False, False]:
+            self.full_optimization_fix_x0(x, intensity)
+        elif [self.fix_x0, self.fix_gamma, self.fix_alpha] == [False, True, False]:
+            self.full_optimization_fix_gamma(x, intensity)
+        elif [self.fix_x0, self.fix_gamma, self.fix_alpha] == [False, False, True]:
+            self.full_optimization_fix_alpha(x, intensity)
+        elif [self.fix_x0, self.fix_gamma, self.fix_alpha] == [True, True, False]:
+            self.full_optimization_fix_x0_gamma(x, intensity)
+        elif [self.fix_x0, self.fix_gamma, self.fix_alpha] == [True, False, True]:
+            self.full_optimization_fix_x0_alpha(x, intensity)
+        elif [self.fix_x0, self.fix_gamma, self.fix_alpha] == [False, True, True]:
+            self.full_optimization_fix_gamma_alpha(x, intensity)
         # self.conditional_max(x, intensity, 1.0e-5, 100)
         return
 
@@ -80,6 +101,75 @@ class DoniachSunjic:
         self.x0 = info['x'][0]
         self.gamma = info['x'][1]
         self.alpha = info['x'][2]
+        return
+
+    def full_optimization_fix_x0(self, x, intensity):
+        def func(param):
+            self.gamma = param[0]
+            self.alpha = param[1]
+            return - self.log_likelihood(x, intensity)
+
+        init = [self.gamma, self.alpha]
+        info = optimize.minimize(func, x0=init, bounds=[(self.gamma_min, self.gamma_max),
+                                                        (self.alpha_min, self.alpha_max)], method='L-BFGS-B')
+        self.gamma = info['x'][0]
+        self.alpha = info['x'][1]
+        return
+
+    def full_optimization_fix_gamma(self, x, intensity):
+        def func(param):
+            self.x0 = param[0]
+            self.alpha = param[1]
+            return - self.log_likelihood(x, intensity)
+
+        init = [self.x0, self.alpha]
+        info = optimize.minimize(func, x0=init, bounds=[(self.x_min, self.x_max),
+                                                        (self.alpha_min, self.alpha_max)], method='L-BFGS-B')
+        self.x0 = info['x'][0]
+        self.alpha = info['x'][1]
+        return
+
+    def full_optimization_fix_alpha(self, x, intensity):
+        def func(param):
+            self.x0 = param[0]
+            self.gamma = param[1]
+            return - self.log_likelihood(x, intensity)
+
+        init = [self.x0, self.gamma]
+        info = optimize.minimize(func, x0=init, bounds=[(self.x_min, self.x_max),
+                                                        (self.gamma_min, self.gamma_max)], method='L-BFGS-B')
+        self.x0 = info['x'][0]
+        self.gamma = info['x'][1]
+        return
+
+    def full_optimization_fix_x0_gamma(self, x, intensity):
+        def func(param):
+            self.alpha = param
+            return - self.log_likelihood(x, intensity)
+
+        init = [self.alpha]
+        info = optimize.minimize(func, x0=init, bounds=[(self.alpha_min, self.alpha_max)], method='L-BFGS-B')
+        self.alpha = info['x'][0]
+        return
+
+    def full_optimization_fix_gamma_alpha(self, x, intensity):
+        def func(param):
+            self.x0 = param
+            return - self.log_likelihood(x, intensity)
+
+        init = [self.x0]
+        info = optimize.minimize(func, x0=init, bounds=[(self.x_min, self.x_max)], method='L-BFGS-B')
+        self.x0 = info['x'][0]
+        return
+
+    def full_optimization_fix_x0_alpha(self, x, intensity):
+        def func(param):
+            self.gamma = param
+            return - self.log_likelihood(x, intensity)
+
+        init = [self.gamma]
+        info = optimize.minimize(func, x0=init, bounds=[(self.gamma_min, self.gamma_max)], method='L-BFGS-B')
+        self.gamma = info['x'][0]
         return
 
     def conditional_max(self, x, intensity, eps, max_iter):
