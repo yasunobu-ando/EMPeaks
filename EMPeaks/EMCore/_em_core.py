@@ -347,15 +347,12 @@ class EMCore:
         # creating temprerature profile
         temp_power = np.array([temp0 + (h-1)*(np.log10(np.sum(intensity))-temp0)/(n_temp-1) 
                                  for h in range(1, n_temp+1)])
-        print("Debug", temp_power)
         temp_profile = np.array([np.sum(intensity)/10**temp_power[h] for h in range(0,n_temp)])
-        print(temp_profile)
 
         hist_model = []
         hist_run_info = []
         for temp in temp_profile:
             print("Stage Temperature: {}:".format(temp))
-            print(self.log_likelihood(x,intensity/temp))
             run_info = self.fit(x, intensity/temp, method=method, max_iter=max_iter, r_eps=r_eps, stdout=stdout)
             tmp_param = copy.deepcopy(self.export_param())
             hist_model.append(tmp_param)
@@ -364,13 +361,16 @@ class EMCore:
         hist_LL = np.array([hist_run_info[i]['LL'] for i in range(n_temp)])
 
         print('Deterministic Annealing with {:3d} temperature stage is finished.'.format(n_temp))
-
+        print()
         info = {'LL_hist': hist_LL,
                 'RMSE_hist': np.array([hist_run_info[i]['RMSE'] for i in range(n_temp)]),
                 'time_hist': np.array([hist_run_info[i]['total_time'] for i in range(n_temp)]),
                 'iter_hist': np.array([hist_run_info[i]['total_iter'] for i in range(n_temp)])
                 }
-
+        tmp = self.pi[0:self.K]
+        K_non_zero = tmp[tmp>0].size
+        print("number of non zero components of spectrum is {} in {}".format(K_non_zero, self.K))
+        print("index of non zero components of spectrum: ", np.nonzero(tmp)[0])
         print('Final model parameters and scores of samples are following:')
         self.print_param_summary(hist_model[-1])
         print('   LL:      {:12.8e}\n'
@@ -484,6 +484,10 @@ class EMCore:
     def m_step(self, x, intensity):        
         N_k = np.array([np.sum(intensity * self._gamma[k]) for k in range(self.K_all)])
         self.pi = (N_k + self.Dirichlet_alpha - 1) / np.sum(N_k + self.Dirichlet_alpha -1)
+        # altering the negative mixing ratio to zero
+        self.pi[self.pi < 0] = 0.0
+        # renormalizing the pi (合ってる？ Is it correct????)
+        self.pi = self.pi/np.sum(self.pi) 
         [self.model[k].maximum_likelihood_estimation(x, intensity * self._gamma[k]) for k in range(self.K_all)]
         return
 

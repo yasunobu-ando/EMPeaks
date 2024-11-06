@@ -99,6 +99,9 @@ class Lorentzian:
         return optimize.brentq(_f, _interval_g[0], _interval_g[1])
 
     def maximum_likelihood_estimation(self, x, intensity, n_partition_x0=100):
+        # for sparse modeling with Dirichlet prior with alpha less than 0.
+        if np.sum(intensity) == 0:
+            return
         #print('MLE via root search method.')
         #self.root_search(x, intensity, n_partition_x0)
         #print('MLE via bfgs method.')

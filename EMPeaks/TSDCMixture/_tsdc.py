@@ -98,6 +98,9 @@ class TSDC:
         return prob / (integrate.trapz(prob, T) + 1.0e-100)
 
     def maximum_likelihood_estimation(self, T, intensity):
+        # for sparse modeling with Dirichlet prior with alpha less than 0.
+        if np.sum(intensity) == 0:
+            return
         try:
             #self.direct_minimization(T, intensity)
             self.find_root(T, intensity)

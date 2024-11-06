@@ -62,6 +62,9 @@ class PseudoVoigt:
         return self.LL
 
     def maximum_likelihood_estimation(self, x, intensity, max_iter=5000, eps=1e-8):
+        # for sparse modeling with Dirichlet prior with alpha less than 0.
+        if np.sum(intensity) == 0:
+            return
         # self.full_optimization(x, intensity, max_iter=max_iter, eps=eps)
         self.conditional_max(x, intensity, max_iter=max_iter, eps=eps)
         return

@@ -51,6 +51,9 @@ class Gaussian:
         return
 
     def maximum_likelihood_estimation(self, x, intensity):
+        # for sparse modeling with Dirichlet prior with alpha less than 0.
+        if np.sum(intensity) == 0:
+            return
         self.mu = np.sum(intensity * x) / (np.sum(intensity) + 1e-100)
         sigma2 = np.sum(intensity * (x - self.mu)**2) / (np.sum(intensity) + 1e-100)
         if sigma2 < 0:
@@ -62,7 +65,7 @@ class Gaussian:
         else:
             self.sigma = np.sqrt(sigma2)
         if self.sigma < 1.0e-5:
-            print("sigma becomes 0. Reset the parameter again.")
+            print("sigma becomes 0. Reset the parameter again.",self.sigma)
             self.init_model()
         return
 
