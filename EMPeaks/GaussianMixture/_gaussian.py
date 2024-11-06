@@ -55,6 +55,9 @@ class Gaussian:
         sigma2 = np.sum(intensity * (x - self.mu)**2) / (np.sum(intensity) + 1e-100)
         if sigma2 < 0:
             print("sigma2 becomes negative. Reset the parameter again.")
+            print(sigma2, np.sum(intensity), np.sum(intensity * (x - self.mu)**2))
+            plt.plot(intensity)
+            exit()
             self.init_model()
         else:
             self.sigma = np.sqrt(sigma2)

@@ -67,6 +67,7 @@ class EMCore:
             print("Setting Background is not implemented.")
         self.N_tot = 1.0
         self.N = self.pi * self.N_tot
+        self.Dirichlet_alpha = np.ones(self.K_all)
 
     def set_param(self, **param):
         """
@@ -331,6 +332,52 @@ class EMCore:
 
         return info
 
+    def deterministic_annealing(self, x, intensity, method='adapted_em', temp0=3, n_temp=5, trial=10,
+                                max_iter=3000, r_eps=1e-9, criteria='likelihood', stdout=False):
+        """
+        temp0: in reference, t_0
+        n_temp: in reference, H
+        """
+        print("Start deterministic annealing.")
+        print("Please check class variable Dirichlet_alpha: {}".format(self.Dirichlet_alpha))
+        print("If Dirichlet_alpha is one, no sparsity is introduced.")
+
+        # confirm the validity of temp0
+        print("Average of data intensity: ", np.average(intensity))
+        # creating temprerature profile
+        temp_power = np.array([temp0 + (h-1)*(np.log10(np.sum(intensity))-temp0)/(n_temp-1) 
+                                 for h in range(1, n_temp+1)])
+        print("Debug", temp_power)
+        temp_profile = np.array([np.sum(intensity)/10**temp_power[h] for h in range(0,n_temp)])
+        print(temp_profile)
+
+        hist_model = []
+        hist_run_info = []
+        for temp in temp_profile:
+            print("Stage Temperature: {}:".format(temp))
+            print(self.log_likelihood(x,intensity/temp))
+            run_info = self.fit(x, intensity/temp, method=method, max_iter=max_iter, r_eps=r_eps, stdout=stdout)
+            tmp_param = copy.deepcopy(self.export_param())
+            hist_model.append(tmp_param)
+            hist_run_info.append(run_info)
+
+        hist_LL = np.array([hist_run_info[i]['LL'] for i in range(n_temp)])
+
+        print('Deterministic Annealing with {:3d} temperature stage is finished.'.format(n_temp))
+
+        info = {'LL_hist': hist_LL,
+                'RMSE_hist': np.array([hist_run_info[i]['RMSE'] for i in range(n_temp)]),
+                'time_hist': np.array([hist_run_info[i]['total_time'] for i in range(n_temp)]),
+                'iter_hist': np.array([hist_run_info[i]['total_iter'] for i in range(n_temp)])
+                }
+
+        print('Final model parameters and scores of samples are following:')
+        self.print_param_summary(hist_model[-1])
+        print('   LL:      {:12.8e}\n'
+              '   RMSE:     {:12.8e}\n'.format(info['LL_hist'][-1], info['RMSE_hist'][-1])
+              )
+        return info
+
     def add_hist_model(self, info, hist_model, trial):
         info.update({'mu_hist': np.array([hist_model[i]['mu'] for i in range(trial)]),
                      'sigma_hist': np.array([hist_model[i]['sigma'] for i in range(trial)])})
@@ -434,9 +481,9 @@ class EMCore:
                                 / (self.predict(x) + eps) for k in range(self.K_all)])
         return
 
-    def m_step(self, x, intensity):
-        self.pi = np.array([np.sum(intensity * self._gamma[k]) for k in range(self.K_all)])
-        self.pi = self.pi / np.sum(self.pi)
+    def m_step(self, x, intensity):        
+        N_k = np.array([np.sum(intensity * self._gamma[k]) for k in range(self.K_all)])
+        self.pi = (N_k + self.Dirichlet_alpha - 1) / np.sum(N_k + self.Dirichlet_alpha -1)
         [self.model[k].maximum_likelihood_estimation(x, intensity * self._gamma[k]) for k in range(self.K_all)]
         return
 
