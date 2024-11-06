@@ -2,7 +2,7 @@
 # Copyright © 2020 National Institute of Advanced Industrial Science and Technology (AIST)
 
 from EMPeaks.GaussianMixture.Tests._test_data import TestData
-from EMPeaks.GaussianMixture._em import EM
+from EMPeaks.GaussianMixture.original._em import EM
 
 
 def test_em(N=10000, sampling=1):

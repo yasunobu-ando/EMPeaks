@@ -1,3 +1,7 @@
+# License: BSD-3-clause
+# Copyright © 2020-2023 National Institute of Advanced Industrial Science and Technology (AIST)
+# Author: Yasunobu ANDO
+
 import numpy as np
 from scipy import integrate, optimize, stats
 import matplotlib.pyplot as plt
@@ -9,7 +13,10 @@ class Lorentzian:
         self.x_max = x_max
         self.gamma_min = gamma_min
         self.gamma_max = gamma_max
-        self.init_model()
+        self.x0 = np.random.uniform(self.x_min, self.x_max)
+        self.gamma = np.random.uniform(self.gamma_min, self.gamma_max)
+        self.fix_x0 = False
+        self.fix_gamma = False
 
     def set_param(self, **param):
         """
@@ -25,8 +32,11 @@ class Lorentzian:
         return
 
     def init_model(self):
-        self.x0 = np.random.uniform(self.x_min, self.x_max)
-        self.gamma = np.random.uniform(0, 100)
+        if not self.fix_x0:
+            self.x0 = np.random.uniform(self.x_min, self.x_max)
+        if not self.fix_gamma:
+            self.gamma = np.random.uniform(self.gamma_min, self.gamma_max)
+        return
 
     def set_param_empirical(self, x, intensity):
         x0_mu = np.sum(intensity * x) / np.sum(intensity)
@@ -98,7 +108,16 @@ class Lorentzian:
         #print('MLE via root search method.')
         #self.root_search(x, intensity, n_partition_x0)
         #print('MLE via bfgs method.')
-        self.minimize_bfgs(x, intensity)
+        ## AND
+        if self.fix_x0*self.fix_gamma: 
+            return
+        ## NOR 
+        elif not (self.fix_x0 + self.fix_gamma):
+            self.minimize_bfgs(x, intensity)
+        elif self.fix_x0: 
+            self.minimize_bfgs_only_gamma(x, intensity)
+        elif self.fix_gamma:
+            self.minimize_bfgs_only_x0(x, intensity)
         return
 
     def root_search(self, x, intensity, n_partition_x0=100):
@@ -159,16 +178,43 @@ class Lorentzian:
         return
 
     def minimize_bfgs(self, x, intensity):
+        print("x0 and gamma is optimized.")
         def func_ll(param):
             self.x0 = param[0]
             self.gamma = param[1]
             return - self.log_likelihood(x, intensity)
 
-        self.x0 = np.sum(x * intensity) / np.sum(intensity)
-        self.gamma = np.sqrt(2.0 * np.log(2.0) * np.sum(x ** 2 * intensity) / np.sum(intensity))
+        #self.x0 = np.sum(x * intensity) / np.sum(intensity)
+        #self.gamma = np.sqrt(2.0 * np.log(2.0) * np.sum(x ** 2 * intensity) / np.sum(intensity))
 
         init = [self.x0, self.gamma]
-        info = optimize.minimize(func_ll, x0=init, bounds=[(-200, 200), (0.1, 2000)], method='L-BFGS-B')
+        info = optimize.minimize(func_ll, x0=init, bounds=[(self.x_min, self.x_max), (0.1, 2000)], method='L-BFGS-B')
         self.x0 = info['x'][0]
         self.gamma = info['x'][1]
+        return
+
+    def minimize_bfgs_only_x0(self, x, intensity):
+        #print("only x0 is optimized.")
+        def func_ll(param):
+            self.x0 = param
+            return - self.log_likelihood(x, intensity)
+
+        # self.x0 = np.sum(x * intensity) / np.sum(intensity)
+
+        init = [self.x0]
+        info = optimize.minimize(func_ll, x0=init, bounds=[(self.x_min, self.x_max)], method='L-BFGS-B')
+        self.x0 = info['x'][0]
+        return
+
+    def minimize_bfgs_only_gamma(self, x, intensity):
+        #print("only gamma is optimized.")
+        def func_ll(param):
+            self.gamma = param
+            return - self.log_likelihood(x, intensity)
+
+        # self.gamma = np.sqrt(2.0 * np.log(2.0) * np.sum(x ** 2 * intensity) / np.sum(intensity))
+
+        init = [self.gamma]
+        info = optimize.minimize(func_ll, x0=init, bounds=[(0.1, 2000)], method='L-BFGS-B')
+        self.gamma = info['x'][0]
         return

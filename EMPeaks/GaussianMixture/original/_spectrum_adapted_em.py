@@ -1,7 +1,7 @@
 # License: BSD-3-clause
 # Copyright © 2020 National Institute of Advanced Industrial Science and Technology (AIST)
 
-from EMPeaks.GaussianMixture._gmm import GaussianMixtureModel
+from EMPeaks.GaussianMixture.original._gmm_old import GaussianMixtureModel
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.animation as animation

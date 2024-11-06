@@ -13,10 +13,7 @@ class Gaussian:
         self.x_max = x_max
         self.sigma_min = sigma_min
         self.sigma_max = sigma_max
-        self.mu =  np.random.uniform(self.x_min, self.x_max)
-        self.sigma = np.random.uniform(self.sigma_min, self.sigma_max)
-        self.fix_mu = False
-        self.fix_sigma = False
+        self.mu, self.sigma = self.init_param()
 
     def set_param(self, **param):
         """
@@ -32,14 +29,13 @@ class Gaussian:
         return
 
     def init_param(self):
-        if not self.fix_mu:
-            mu = np.random.uniform(self.x_min, self.x_max)
-        if not self.fix_sigma:
-            sigma = np.random.uniform(self.sigma_min, self.sigma_max)
-        return 
+        mu = np.random.uniform(self.x_min, self.x_max)
+        sigma = np.random.uniform(self.sigma_min, self.sigma_max)
+        return mu, sigma
 
     def init_model(self):
-        self.init_param()
+        self.mu = np.random.uniform(self.x_min, self.x_max)
+        self.sigma = np.random.uniform(self.sigma_min, self.sigma_max)
         return
 
     def predict(self, x):
@@ -55,19 +51,16 @@ class Gaussian:
         return
 
     def maximum_likelihood_estimation(self, x, intensity):
-        # if fix_mu is False, mu will be estimated in MLE.
-        if not self.fix_mu:
-            self.mu = np.sum(intensity * x) / (np.sum(intensity) + 1e-100)
-        if not self.fix_sigma:
-            sigma2 = np.sum(intensity * (x - self.mu)**2) / (np.sum(intensity) + 1e-100)
-            if sigma2 < 0:
-                print("sigma2 becomes negative. Reset the parameter again.")
-                self.init_model()
-            else:
-                self.sigma = np.sqrt(sigma2)
-            if self.sigma < 1.0e-5:
-                print("sigma becomes 0. Reset the parameter again.")
-                self.init_model()
+        self.mu = np.sum(intensity * x) / (np.sum(intensity) + 1e-100)
+        sigma2 = np.sum(intensity * (x - self.mu)**2) / (np.sum(intensity) + 1e-100)
+        if sigma2 < 0:
+            print("sigma2 becomes negative. Reset the parameter again.")
+            self.init_model()
+        else:
+            self.sigma = np.sqrt(sigma2)
+        if self.sigma < 1.0e-5:
+            print("sigma becomes 0. Reset the parameter again.")
+            self.init_model()
         return
 
     def cdf(self, x):

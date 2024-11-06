@@ -1,31 +1,26 @@
 # License: BSD-3-clause
-# Copyright © 2021 National Institute of Advanced Industrial Science and Technology (AIST)
+# Copyright © 2023 National Institute of Advanced Industrial Science and Technology (AIST)
+# Author: Yasunobu ANDO
 
-from EMPeaks.GaussianMixture._gaussian import Gaussian
-from ..Background import UniformModel, SquareRootModel, LinearModel, TriangleModel, RampModel
-from ..Background import TanhModel, TanhLinearModel, TanhQuadModel, TanhCubicModel
-
-import numpy as np
+from EMPeaks.EMCore._gaussian import Gaussian
+from EMPeaks.Background import UniformModel, SquareRootModel, LinearModel, TriangleModel, RampModel, SplineBasisModel
 from scipy import integrate
 from scipy import optimize
+import numpy as np
 import matplotlib.pyplot as plt
 import copy
 import time
 
 
-class GaussianMixtureModel:
+class EMCore:
     def __init__(self, K=2, x_min=-300, x_max=300, sigma_min=0.1, sigma_max=50,
-                 background='none', sign='positive', k_ramp=5, postedge_order=3):
+                 background='none', k_ramp=5, degree_spline=3, n_section=3):
         self.K = K
         self.x_min = x_min
         self.x_max = x_max
         self.sigma_min = sigma_min
         self.sigma_max = sigma_max
         self.background = background
-        if background == 'xafs':
-            self.sign='negative'
-        else:
-            self.sign=sign
         self.dx = 1.0
 
         self.model = [Gaussian(x_min, x_max, sigma_min, sigma_max) for k in range(self.K)]
@@ -33,25 +28,21 @@ class GaussianMixtureModel:
 
         if self.background == 'none':
             self.K_all = K
-
         elif self.background == 'uniform':
             self.K_all = K + 1
             self.pi = np.append(self.pi, 1.0e-4)
             self.pi = self.pi / np.sum(self.pi)
             self.model.append(UniformModel(self.x_min, self.x_max))
-
         elif self.background == 'squareroot':
             self.K_all = K + 1
             self.pi = np.append(self.pi, 1.0e-4)
             self.pi = self.pi / np.sum(self.pi)
             self.model.append(SquareRootModel(self.x_min, self.x_max))
-
         elif self.background == 'linear':
             self.K_all = K + 1
             self.pi = np.append(self.pi, 1.0e-4)
             self.pi = self.pi / np.sum(self.pi)
-            self.model.append(LinearModel(self.x_min, self.x_max, sign=self.sign))
-
+            self.model.append(LinearModel(self.x_min, self.x_max))
         elif self.background == 'ramp_sum':
             print("RampSum Background is set.")
             self.k_ramp = k_ramp
@@ -61,35 +52,20 @@ class GaussianMixtureModel:
             self.pi = self.pi / np.sum(self.pi)
             self.model.append(UniformModel(self.x_min, self.x_max))
             for k in range(k_ramp):
-                self.model.append(RampModel(self.ramp_node[k], self.ramp_node[k + 1], self.x_max))
+                 self.model.append(RampModel(self.ramp_node[k], self.ramp_node[k + 1], self.x_max))
             self.model.append(TriangleModel(self.ramp_node[-1], self.x_max))
+        elif self.background == 'b_spline':
+            print("B-Spline Background is set.")
+            self.degree_spline = degree_spline
+            self.n_section = n_section
+            self.n_spline_basis = n_section + degree_spline
+            self.K_all = K + self.n_spline_basis
 
-        elif self.background == 'xafs':
-            print("XAFS Background is set.")
-            self.postedge_order = postedge_order
-            self.K_all = self.K + postedge_order + 2
-            self.pi = np.append(self.pi, np.random.rand(self.postedge_order + 2))
+            self.pi = np.append(self.pi, np.random.rand(self.n_spline_basis))
             self.pi = self.pi / np.sum(self.pi)
-            self.model.append(LinearModel(self.x_min, self.x_max, sign='negative'))
-            self.model.append(TanhModel((self.x_min+self.x_max)/2,
-                                        (self.x_max-self.x_min)*10, self.x_min, self.x_max))
-            if self.postedge_order == 3:
-                self.model.append(TanhLinearModel((self.x_min+self.x_max)/2,
-                                                  (self.x_max-self.x_min)*10, self.x_min, self.x_max))
-                self.model.append(TanhQuadModel((self.x_min+self.x_max)/2,
-                                                (self.x_max-self.x_min)*10, self.x_min, self.x_max))
-                self.model.append(TanhCubicModel((self.x_min+self.x_max)/2,
-                                                 (self.x_max-self.x_min)*10, self.x_min, self.x_max))
-            elif self.postedge_order == 2:
-                self.model.append(TanhLinearModel((self.x_min+self.x_max)/2,
-                                                  (self.x_max-self.x_min)*10, self.x_min, self.x_max))
-                self.model.append(TanhQuadModel((self.x_min+self.x_max)/2,
-                                                (self.x_max-self.x_min)*10, self.x_min, self.x_max))
-            elif self.postedge_order == 1:
-                self.model.append(TanhLinearModel((self.x_min+self.x_max)/2,
-                                                  (self.x_max-self.x_min)*10, self.x_min, self.x_max))
-            else:
-                print("postedge order is less than 1. Please set more than 1.")
+
+        for k in range(self.n_spline_basis):
+            self.model.append(SplineBasisModel(self.xmin,self.x_max, self.degree_spline, self.n_section, k))
 
         #elif self.background == 'sharley':
         #    print("Sharley Background is set.")
@@ -105,17 +81,10 @@ class GaussianMixtureModel:
         self.N_tot = 1.0
         self.N = self.pi * self.N_tot
 
-    def predict(self, x):
-        return np.sum([self.pi[k] * self.model[k].predict(x) for k in range(self.K_all)], axis=0)
-
-    def log_likelihood(self, x, intensity):
-        return np.sum(intensity * np.log(self.predict(x) + 1e-200))
-
     def set_param(self, **param):
         """
         """
         if not param:
-            print("No param is set.")
             return self
 
         param_keys = set(param.keys())
@@ -156,15 +125,28 @@ class GaussianMixtureModel:
                 self.pi = np.ones(self.K_all) / self.K_all
                 return
 
+    def set_single_params(self, **param):
+        # setting parameters for each single Gaussian model.
+        param_set = {"mu", "sigma"}
+        single_params = self.extract_single_params(param_set, **param)
+        self.model = [Gaussian(self.x_min, self.x_max, self.sigma_min, self.sigma_max) for k in range(self.K)]
+        [self.model[k].set_param(**single_params[k]) for k in range(self.K)]
+        return
+
     def set_param_background(self, **param):
-        # setting parameters for Background.
+        """
+        # setting parameters for Background. (in _em_core.py),
+        In set_single_params, self.model is reconstructed.
+        Then, we need to reset background model same as __init__().
+        :param param:
+        :return:
+        """
         if self.background == 'none':
             self.K_all = self.K
 
         elif self.background == 'uniform':
             self.K_all = self.K + 1
             self.model.append(UniformModel(self.x_min, self.x_max))
-
         elif self.background == 'squareroot':
             self.K_all = self.K + 1
             self.model.append(SquareRootModel(self.x_min, self.x_max))
@@ -172,9 +154,9 @@ class GaussianMixtureModel:
         elif self.background == 'linear':
             self.K_all = self.K + 1
             if ('s_tri' in param) and (0 <= param['s_tri'] <= 1.0):
-                self.model.append(LinearModel(self.x_min, self.x_max, self.sign, s_tri=param['s_tri']))
+                self.model.append(LinearModel(self.x_min, self.x_max, s_tri=param['s_tri']))
             else:
-                self.model.append(LinearModel(self.x_min, self.sign, self.x_max))
+                self.model.append(LinearModel(self.x_min, self.x_max))
 
         elif self.background == 'ramp_sum':
             self.K_all = self.K + self.k_ramp + 2
@@ -186,31 +168,10 @@ class GaussianMixtureModel:
                 self.model.append(RampModel(self.ramp_node[k], self.ramp_node[k + 1], self.x_max))
             self.model.append(TriangleModel(self.ramp_node[-1], self.x_max))
 
-        elif self.background == 'xafs':
-            self.K_all = self.K + self.postedge_order + 2
-            if ('s_tri' in param) and (0 <= param['s_tri'] <= 1.0):
-                self.model.append(LinearModel(self.x_min, self.x_max, s_tri=param['s_tri'], sign='negative'))
-            else:
-                self.model.append(LinearModel(self.x_min, self.x_max, sign='negative'))
-            if 'xafs_x0' in param:
-                x0 = param['xafs_x0']
-                a = param['xafs_a']
-            else:
-                x0 = np.ones(self.postedge_order+1)*(self.x_max+self.x_min)/2
-                a = np.ones(self.postedge_order+1)*(self.x_max-self.x_min)*10
-
-            self.model.append(TanhModel(x0[0], a[0], self.x_min, self.x_max))
-            if self.postedge_order == 3:
-                self.model.append(TanhLinearModel(x0[1], a[1], self.x_min, self.x_max))
-                self.model.append(TanhQuadModel(x0[2], a[2], self.x_min, self.x_max))
-                self.model.append(TanhCubicModel(x0[3], a[3], self.x_min, self.x_max))
-            elif self.postedge_order == 2:
-                self.model.append(TanhLinearModel(x0[1], a[1], self.x_min, self.x_max))
-                self.model.append(TanhQuadModel(x0[2], a[2], self.x_min, self.x_max))
-            elif self.postedge_order == 1:
-                self.model.append(TanhLinearModel(x0[1], a[1], self.x_min, self.x_max))
-            else:
-                print("postedge order is less than 1. Please set more than 1.")
+        elif self.background == 'b-spline':
+            self.K_all == self.K + self.n_spline_basis
+            for k in range(self.n_spline_basis):
+                self.model.append(SplineBasisModel(self.xmin, self.x_max, self.degree_spline, self.n_section, k))
 
         # elif self.background == 'sharley':
         #     self.K_all = self.K + 2
@@ -225,11 +186,11 @@ class GaussianMixtureModel:
         for k in range(self.K):
             dict = {}
             for key in param_keys & param_set:
-                if type(param[key]) is not list:
+                if type(param[key]) != list:
                     print("Error: SingleModel parameters must be list type.")
                     self.K = org_K
                     return
-                if len(param[key]) is not param['K']:
+                if len(param[key]) != param['K']:
                     print("Error: length of parameters \"" + key + "\" is not consistent with value K.")
                     self.K = org_K
                     return
@@ -242,23 +203,14 @@ class GaussianMixtureModel:
 
         return single_params
 
-    def set_single_params(self, **param):
-        # setting parameters for each single Gaussian model.
-        param_set = {"mu", "sigma"}
-        single_params = self.extract_single_params(param_set, **param)
-        self.model = [Gaussian(self.x_min, self.x_max, self.sigma_min, self.sigma_max) for k in range(self.K)]
-        [self.model[k].set_param(**single_params[k]) for k in range(self.K)]
-        return
-
     def export_param(self):
-        """
-        バックグラウンドがパラメータを有する場合には、この関数を編集してパラメータの保存を行う必要あり
-        :return:
-        """
         _tmp_param = self.__dict__
         _tmp_param, _tmp_index = self.export_single_params(_tmp_param)
-        _tmp_param = self.export_background_param(_tmp_param)
-
+        if self.background == 'linear':
+            s_in_linear = [self.model[-1].s_uni, self.model[-1].s_tri]
+        if self.background == 'linear':
+            self.model[-1].s_uni = s_in_linear[0]
+            self.model[-1].s_tri = s_in_linear[1]
         _tmp_param['pi'][0:self.K] = list(np.array(self.pi)[0:self.K][_tmp_index])
         _tmp_param['N'] = list(np.array(_tmp_param['pi']) * self.N_tot)
         self.set_param(**_tmp_param)
@@ -278,69 +230,36 @@ class GaussianMixtureModel:
 
         return _tmp_param, _tmp_index
 
-    def export_background_param(self, _tmp_param):
-        if self.background == 'linear':
-            _tmp_param["s_tri"] = self.model[-1].s_tri
-        if self.background == 'xafs':
-            _tmp_param = self.export_xafs_param(_tmp_param)
-        return _tmp_param
-
-    def export_xafs_param(self, _tmp_param):
-        _tmp_param["s_tri"] = self.model[self.K].s_tri
-        _tmp_param["xafs_x0"] = [self.model[self.K + k + 1].x0 for k in range(self.postedge_order + 1)]
-        _tmp_param["xafs_a"] = [self.model[self.K + k + 1].a for k in range(self.postedge_order + 1)]
-        return _tmp_param
-
     def init_param_uniform(self):
-        """
-        パラメータの初期化を行う関数
-        :return:
-        """
         self.pi = np.random.rand(self.K_all)
         self.pi = self.pi / self.pi.sum()
         self.N = self.pi * self.N_tot
         return [self.model[k].init_model() for k in range(self.K)]
 
+    def predict(self, x):
+        return np.sum([self.pi[k] * self.model[k].predict(x) for k in range(self.K_all)], axis=0)
+
+    def log_likelihood(self, x, intensity):
+        return np.sum(intensity * np.log(self.predict(x) + 1e-200))
+
     def fit(self, x, intensity, method='adapted_em', max_iter=3000, r_eps=1e-9,
             stdout=True, trial=10, criteria='likelihood'):
+        print("**** Start spectrum fitting via EM algorithm ****")
+        print("background: {}".format(self.background))
+
         self.x_min = np.min(x)
         self.x_max = np.max(x)
-
-        # バックグラウンド関数の定義域をデータに合わせる
         if self.background == "uniform":
             self.model[-1] = UniformModel(self.x_min, self.x_max)
         if self.background == "squareroot":
             self.model[-1] = SquareRootModel(self.x_min, self.x_max)
         if self.background == "linear":
-            self.model[-1] = LinearModel(self.x_min, self.x_max, self.sign)
-        if self.background == 'ramp_sum':
+            self.model[-1] = LinearModel(self.x_min, self.x_max)
+        elif self.background == 'ramp_sum':
             self.model.append(UniformModel(self.x_min, self.x_max))
             for k in range(self.k_ramp):
                 self.model.append(RampModel(self.ramp_node[k], self.ramp_node[k + 1], self.x_max))
             self.model.append(TriangleModel(self.ramp_node[-1], self.x_max))
-        if self.background == "xafs":
-            self.K_all = self.K + self.postedge_order + 2
-            self.model.append(LinearModel(self.x_min, self.x_max, sign='negative'))
-            self.model.append(TanhModel((self.x_min + self.x_max) / 2,
-                                        (self.x_max - self.x_min) * 10, self.x_min, self.x_max))
-            if self.postedge_order == 3:
-                self.model.append(TanhLinearModel((self.x_min + self.x_max) / 2,
-                                                  (self.x_max - self.x_min) * 10, self.x_min, self.x_max))
-                self.model.append(TanhQuadModel((self.x_min + self.x_max) / 2,
-                                                (self.x_max - self.x_min) * 10, self.x_min, self.x_max))
-                self.model.append(TanhCubicModel((self.x_min + self.x_max) / 2,
-                                                 (self.x_max - self.x_min) * 10, self.x_min, self.x_max))
-            elif self.postedge_order == 2:
-                self.model.append(TanhLinearModel((self.x_min + self.x_max) / 2,
-                                                  (self.x_max - self.x_min) * 10, self.x_min, self.x_max))
-                self.model.append(TanhQuadModel((self.x_min + self.x_max) / 2,
-                                                (self.x_max - self.x_min) * 10, self.x_min, self.x_max))
-            elif self.postedge_order == 1:
-                self.model.append(TanhLinearModel((self.x_min + self.x_max) / 2,
-                                                  (self.x_max - self.x_min) * 10, self.x_min, self.x_max))
-            else:
-                print("postedge order is less than 1. Please set more than 1.")
-
         # elif self.background == 'sharley':
         #     self.model.append(UniformModel(self.x_min, self.x_max))
         #     self.model.append(Sharley(self.K, self.x_min, self.x_max))
@@ -509,14 +428,13 @@ class GaussianMixtureModel:
         return run_info
 
     def print_param_summary(self, param):
+        """
+        This function depends on a mixture model. Please define in a setting files of new mixture models.
+        :param param:
+        :return:
+        """
         print('   mu:        ' + ('{:5.3f} eV       ' * len(param['mu'])).format(*param['mu']))
         print('   sigma:     ' + ('{:6.3e}          ' * len(param['sigma'])).format(*param['sigma']))
-        if self.background == 'xafs':
-            print("XAFS background parameter")
-            print('   x0:        ' + ('{:5.3f} eV       ' * len(param['xafs_x0'])).format(*param['xafs_x0']))
-            print('    a:     ' + ('{:6.3e}          ' * len(param['xafs_a'])).format(*param['xafs_a']))
-
-            print(param['xafs_x0'], )
         print('   N_tot:   {:6.3e} '.format(self.N_tot))
         print('   N:         ' + ('{:6.3e}       ' * len(param['pi'])).format(*param['pi'] * self.N_tot))
         print('   pi:        ' + ('{:6.3e}       ' * len(param['pi'])).format(*param['pi']))
@@ -671,6 +589,7 @@ class GaussianMixtureModel:
         figsize = (8, 3)
         fig = plt.figure(figsize=figsize)
         x = np.arange(self.x_min, self.x_max, self.dx)
+
         ax = fig.add_subplot(1, 1, 1)
         if self.background == 'none':
             for k in range(self.K):
@@ -684,12 +603,6 @@ class GaussianMixtureModel:
             for k in range(self.K):
                 ax.plot(x, self.model[k].predict(x) * self.N[k], label='model_' + str(k))
             y = np.sum([self.model[self.K+k].predict(x) * self.N[self.K+k] for k in range(self.k_ramp+2)], axis=0)
-            ax.plot(x, y, label=self.background)
-        elif self.background == 'xafs':
-            for k in range(self.K):
-                ax.plot(x, self.model[k].predict(x) * self.N[k], label='model_' + str(k))
-            y = np.sum([self.model[self.K + k].predict(x) * self.N[self.K + k] for k
-                        in range(self.postedge_order + 2)], axis=0)
             ax.plot(x, y, label=self.background)
         else:
             for k in range(self.K):
