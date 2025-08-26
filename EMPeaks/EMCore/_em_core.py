@@ -332,11 +332,11 @@ class EMCore:
 
         return info
 
-    def deterministic_annealing(self, x, intensity, method='adapted_em', temp0=3, n_temp=5, trial=10,
-                                max_iter=3000, r_eps=1e-9, criteria='likelihood', stdout=False):
+    def deterministic_annealing(self, x, intensity,  max_iter=3000, r_eps=1e-9,
+                                temp0=3, n_temp=5, stdout=False):
         """
         temp0: in reference, t_0
-        n_temp: in reference, H
+        n_temp: number of stages of annealing temperature. In reference, H.
         """
         print("Start deterministic annealing.")
         print("Please check class variable Dirichlet_alpha: {}".format(self.Dirichlet_alpha))
@@ -344,7 +344,7 @@ class EMCore:
 
         # confirm the validity of temp0
         print("Average of data intensity: ", np.average(intensity))
-        # creating temprerature profile
+        # creating temperature profile
         temp_power = np.array([temp0 + (h-1)*(np.log10(np.sum(intensity))-temp0)/(n_temp-1) 
                                  for h in range(1, n_temp+1)])
         temp_profile = np.array([np.sum(intensity)/10**temp_power[h] for h in range(0,n_temp)])
@@ -353,7 +353,7 @@ class EMCore:
         hist_run_info = []
         for temp in temp_profile:
             print("Stage Temperature: {}:".format(temp))
-            run_info = self.fit(x, intensity/temp, method=method, max_iter=max_iter, r_eps=r_eps, stdout=stdout)
+            run_info = self.fit(x, intensity/temp, method='adapted_em', max_iter=max_iter, r_eps=r_eps, stdout=stdout)
             tmp_param = copy.deepcopy(self.export_param())
             hist_model.append(tmp_param)
             hist_run_info.append(run_info)
