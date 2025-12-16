@@ -1,0 +1,41 @@
+LICENSE
+MANIFEST.in
+README.md
+pyproject.toml
+setup.cfg
+./EMPeaks/__init__.py
+./EMPeaks/file_io.py
+./EMPeaks.egg-info/PKG-INFO
+./EMPeaks.egg-info/SOURCES.txt
+./EMPeaks.egg-info/dependency_links.txt
+./EMPeaks.egg-info/top_level.txt
+./EMPeaks/Background/__init__.py
+./EMPeaks/Background/_background.py
+./EMPeaks/DoniachSunjicMixture/__init__.py
+./EMPeaks/DoniachSunjicMixture/_doniachsunjic.py
+./EMPeaks/DoniachSunjicMixture/_dsmm.py
+./EMPeaks/EMCore/__init__.py
+./EMPeaks/EMCore/_em_core.py
+./EMPeaks/EMCore/_gaussian.py
+./EMPeaks/GaussianMixture/__init__.py
+./EMPeaks/GaussianMixture/_gaussian.py
+./EMPeaks/GaussianMixture/_gmm.py
+./EMPeaks/GaussianMixture/Tests/__init__.py
+./EMPeaks/GaussianMixture/Tests/_test_data 2.py
+./EMPeaks/GaussianMixture/Tests/_test_data.py
+./EMPeaks/GaussianMixture/Tests/_test_em 2.py
+./EMPeaks/GaussianMixture/Tests/_test_em.py
+./EMPeaks/GaussianMixture/Tests/_test_exp_data 2.py
+./EMPeaks/GaussianMixture/Tests/_test_exp_data.py
+./EMPeaks/GaussianMixture/Tests/_test_sepctrum_adapted_em 2.py
+./EMPeaks/GaussianMixture/Tests/_test_sepctrum_adapted_em.py
+./EMPeaks/GaussianMixture/original/__init__.py
+./EMPeaks/GaussianMixture/original/_em.py
+./EMPeaks/GaussianMixture/original/_gmm_old.py
+./EMPeaks/GaussianMixture/original/_spectrum_adapted_em.py
+./EMPeaks/LorentzianMixture/__init__.py
+./EMPeaks/LorentzianMixture/_lmm.py
+./EMPeaks/LorentzianMixture/_lorentz.py
+./EMPeaks/PseudoVoigtMixture/__init__.py
+./EMPeaks/PseudoVoigtMixture/_pseudo_voigt.py
+./EMPeaks/PseudoVoigtMixture/_pvmm.py
