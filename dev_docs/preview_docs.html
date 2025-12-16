@@ -1,0 +1,539 @@
+<!DOCTYPE html>
+<html lang="ja">
+
+<head>
+    <meta charset="UTF-8">
+    <title>EMPeaks Documentation Preview</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: "Helvetica Neue", Arial, sans-serif;
+            background-color: #f5f5f5;
+            display: flex;
+            min-height: 100vh;
+        }
+
+        /* Sidebar Styles */
+        .sidebar {
+            width: 260px;
+            background-color: #2c3e50;
+            color: #ecf0f1;
+            padding: 20px;
+            position: fixed;
+            height: 100vh;
+            overflow-y: auto;
+            box-sizing: border-box;
+            box-shadow: 2px 0 5px rgba(0, 0, 0, 0.1);
+        }
+
+        .sidebar h2 {
+            font-size: 1.2em;
+            margin-top: 0;
+            border-bottom: 1px solid #34495e;
+            padding-bottom: 10px;
+            margin-bottom: 20px;
+        }
+
+        .sidebar ul {
+            list-style: none;
+            padding: 0;
+        }
+
+        .sidebar li {
+            margin-bottom: 5px;
+        }
+
+        .sidebar button {
+            background: none;
+            border: none;
+            color: #bdc3c7;
+            text-align: left;
+            width: 100%;
+            padding: 10px;
+            cursor: pointer;
+            border-radius: 4px;
+            font-size: 1em;
+            transition: background 0.2s, color 0.2s;
+        }
+
+        .sidebar button:hover {
+            background-color: #34495e;
+            color: #fff;
+        }
+
+        .sidebar button.active {
+            background-color: #3498db;
+            color: #fff;
+            font-weight: bold;
+        }
+
+        /* Main Content Styles */
+        .main-content {
+            margin-left: 260px;
+            padding: 40px;
+            flex: 1;
+            max-width: 900px;
+            background: white;
+            min-height: 100vh;
+            box-shadow: -2px 0 10px rgba(0, 0, 0, 0.05);
+        }
+
+        /* Markdown Styles */
+        .markdown-body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji";
+            font-size: 16px;
+            line-height: 1.5;
+            word-wrap: break-word;
+        }
+
+        .markdown-body h1,
+        .markdown-body h2,
+        .markdown-body h3 {
+            border-bottom: 1px solid #eaecef;
+            padding-bottom: .3em;
+        }
+
+        .markdown-body code {
+            background-color: rgba(27, 31, 35, .05);
+            border-radius: 3px;
+            font-size: 85%;
+            margin: 0;
+            padding: .2em .4em;
+        }
+
+        .markdown-body pre {
+            background-color: #f6f8fa;
+            border-radius: 3px;
+            font-size: 85%;
+            line-height: 1.45;
+            overflow: auto;
+            padding: 16px;
+        }
+
+        .markdown-body pre code {
+            background-color: transparent;
+            border: 0;
+            display: inline;
+            line-height: inherit;
+            margin: 0;
+            overflow: visible;
+            padding: 0;
+            word-wrap: normal;
+            font-size: 100%;
+        }
+
+        .markdown-body table {
+            border-collapse: collapse;
+            border-spacing: 0;
+        }
+
+        .markdown-body table th,
+        .markdown-body table td {
+            border: 1px solid #dfe2e5;
+            padding: 6px 13px;
+        }
+
+        .markdown-body table tr:nth-child(2n) {
+            background-color: #f6f8fa;
+        }
+
+        .markdown-body img {
+            max-width: 100%;
+            box-sizing: content-box;
+            background-color: #fff;
+        }
+    </style>
+    <!-- Marked.js for Markdown rendering -->
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+</head>
+
+<body>
+
+    <div class="sidebar">
+        <h2>EMPeaks Docs</h2>
+        <ul>
+            <li><button onclick="showDoc('readme')" id="btn-readme" class="active">📄 README.md</button></li>
+            <li><button onclick="showDoc('overview')" id="btn-overview">📄 project_overview.md</button></li>
+            <li><button onclick="showDoc('api')" id="btn-api">📄 api_reference.md</button></li>
+            <li><button onclick="showDoc('deps')" id="btn-deps">📄 dependencies.md</button></li>
+            <li><button onclick="showDoc('map')" id="btn-map">📄 documentation_map.md</button></li>
+        </ul>
+    </div>
+
+    <div class="main-content">
+        <div id="content" class="markdown-body"></div>
+    </div>
+
+    <!-- Embedded Markdown Content -->
+    <script type="text/markdown" id="doc-readme">
+# Development and Operation Documentation
+
+This directory contains documentation for the development and operation of the EMPeaks project.
+
+## Contents
+
+- [プロジェクト概要と利用方法](./project_overview.md)
+- [主要関数・APIリファレンス](./api_reference.md)
+- [依存関係とリスク管理](./dependencies.md)
+- [ドキュメント構成マップ](./documentation_map.md)
+    </script>
+
+    <script type="text/markdown" id="doc-overview">
+# プロジェクト概要と利用方法
+
+## 1. 概要 (Overview)
+**EMPeaks** は、Spectrum Adapted EM (Expectation-Maximization) アルゴリズムを使用した高スループットなピーク解析パッケージです。
+主にスペクトルデータ（XPSなど）のピーク分離やフィッティングに使用されます。
+
+主な機能:
+- **Gaussian Mixture Model (GMM)**: ガウス分布混合モデルによるフィッティング
+- **Lorentzian Mixture Model (LMM)**: ローレンツ分布混合モデル
+- **Background Subtraction**: バックグラウンド除去機能 (uniform, linear, ramp_sum)
+
+## 2. ディレクトリ構造 (Directory Structure)
+
+```mermaid
+graph TD
+    Root[EMPeaks Project] --> Src[EMPeaks/]
+    Root --> Docs[docs/]
+    Root --> DevDocs[dev_docs/]
+    Root --> Demo[empeaks_demo.py]
+    
+    Src --> GMM[GaussianMixture/]
+    Src --> LMM[LorentzianMixture/]
+    Src --> Core[EMCore/]
+    
+    DevDocs --> Readme[README.md]
+    DevDocs --> Overview[project_overview.md]
+    DevDocs --> API[api_reference.md]
+    
+    style Root fill:#f9f,stroke:#333
+    style Src fill:#bbf,stroke:#333
+```
+
+主なディレクトリとファイルの役割は以下の通りです。
+
+- **`EMPeaks/`**: パッケージのソースコード本体。
+    - `GaussianMixture.py`: ガウス混合モデルの実装。
+    - `LorentzianMixture.py`: ローレンツ混合モデルの実装。
+    - その他のモデルやユーティリティが含まれます。
+- **`docs/`**: ドキュメントやチュートリアル（Jupyter Notebook形式）。
+- **`dev_docs/`**: 開発者および運用補助のためのドキュメント（本ディレクトリ）。
+- **`empeaks_demo.py`**: `marimo` を使用したインタラクティブなデモアプリケーション。
+- **`requirements.txt`**: 依存ライブラリ一覧。
+- **`setup.cfg` / `pyproject.toml`**: パッケージのビルド設定。
+
+## 3. 利用方法 (Usage)
+
+### 解析フロー
+典型的な解析の流れは以下の通りです。
+
+```mermaid
+sequenceDiagram
+    participant User as ユーザー
+    participant Script as Pythonスクリプト
+    participant Model as EMPeaksモデル
+    
+    User->>Script: データ(x, y)をロード
+    Script->>Model: モデル初期化 (K=3など)
+    Script->>Model: fit(x, y) を実行
+    loop EMアルゴリズム
+        Model->>Model: E-step (確率計算)
+        Model->>Model: M-step (パラメータ更新)
+        Model->>Model: 収束判定
+    end
+    Model-->>Script: フィッティング完了
+    Script->>Model: plot(x, y)
+    Model-->>User: グラフ表示
+```
+
+### インストール
+必要なライブラリをインストールします。
+```bash
+pip install -r requirements.txt
+```
+
+### 基本的な使い方
+Pythonスクリプト内で `EMPeaks` パッケージをインポートして使用します。
+
+```python
+from EMPeaks import GaussianMixture
+import numpy as np
+
+# データの準備
+x = ...
+y = ...
+
+# モデルの作成とフィッティング
+gmm = GaussianMixture.GaussianMixtureModel(K=3) # Kはピーク数
+gmm.fit(x, y)
+
+# 結果のプロットなど
+gmm.plot(x, y)
+```
+
+### デモの実行
+`marimo` を使用したデモを実行することで、ブラウザ上でインタラクティブに動作確認ができます。
+
+```bash
+marimo run empeaks_demo.py
+```
+または、編集モードで起動する場合:
+```bash
+marimo edit empeaks_demo.py
+```
+
+## 4. 参考文献
+本パッケージのアルゴリズム詳細については、以下の論文を参照してください。
+- Sci. Tech. Adv. Mater. 20, 733-735 (2019)
+- Sci. Tech. Adv. Mater. method 1, 45 (2021)
+    </script>
+
+    <script type="text/markdown" id="doc-api">
+# API リファレンス
+
+本パッケージの主要なクラスと関数について説明します。
+多くのモデルクラスは `EMCore` クラスを継承しており、共通のインターフェースを持っています。
+
+### クラス継承関係
+
+```mermaid
+classDiagram
+    class EMCore {
+        +fit(x, y)
+        +predict(x)
+        +plot(x, y)
+        +sampling(x, y)
+    }
+    class GaussianMixtureModel {
+        +__init__(K, ...)
+    }
+    class LorentzianMixtureModel {
+        +__init__(K, ...)
+    }
+    
+    EMCore <|-- GaussianMixtureModel
+    EMCore <|-- LorentzianMixtureModel
+```
+
+## GaussianMixtureModel
+
+ガウス分布混合モデルを扱うクラスです。
+
+```python
+from EMPeaks import GaussianMixture
+gmm = GaussianMixture.GaussianMixtureModel(K=3, background='linear')
+```
+
+### 初期化 (`__init__`)
+
+```python
+GaussianMixtureModel(K=2, x_min=-300, x_max=300, sigma_min=0.1, sigma_max=50, background='none', k_ramp=5)
+```
+
+- **K** (int): ピークの数。
+- **x_min**, **x_max** (float): 解析するX軸（エネルギーなど）の範囲。
+- **background** (str): バックグラウンドモデルの種類。
+    - `'none'`: バックグラウンドなし。
+    - `'uniform'`: 一様分布。
+    - `'linear'`: 線形（勾配あり）。
+    - `'ramp_sum'`: Ramp-Sumモデル（階段状）。
+- **sigma_min**, **sigma_max** (float): ガウス分布の幅（標準偏差）の制約範囲。
+
+### 主要メソッド
+
+#### `fit(x, intensity, method='adapted_em', ...)`
+
+データに対してモデルをフィッティングします。
+
+```mermaid
+flowchart TD
+    Start[開始] --> Init[初期値設定<br/>(sampling等)]
+    Init --> LoopStart{収束ループ}
+    LoopStart --> EStep[E-step: 所属確率の計算]
+    EStep --> MStep[M-step: パラメータ更新]
+    MStep --> CalcLL[尤度(Log-Likelihood)計算]
+    CalcLL --> Check{収束判定<br/>(変化 < r_eps?)}
+    Check -- No --> LoopStart
+    Check -- Yes --> End[終了]
+```
+
+- **x** (array-like): X軸データ。
+- **intensity** (array-like): Y軸データ（強度）。
+- **method** (str): フィッティング手法。
+    - `'adapted_em'`: Spectrum Adapted EMアルゴリズム（推奨）。
+    - `'smart'`: サンプリング -> EM -> 最小二乗法 を組み合わせた高精度な手法。
+    - `'leastsq'`: 最小二乗法。
+- **trial** (int): `method='smart'` の場合の初期値サンプリング試行回数。
+
+戻り値: フィッティング結果の情報を含む辞書（Log-Likelihood, RMSEなど）。
+
+#### `predict(x)`
+
+現在のモデルパラメータに基づいて、指定されたX座標での計算値（強度）を返します。
+
+- **x** (array-like): 計算したいX座標。
+- **戻り値**: 計算されたY値（numpy array）。
+
+#### `plot(x_data, intensity)`
+
+データとフィッティング結果をプロットして表示します。
+
+- **x_data**: プロットするデータのX軸。
+- **intensity**: プロットするデータのY軸。
+
+#### `sampling(x, intensity, trial=10, ...)`
+
+ランダムな初期値を用いて複数回フィッティングを行い、最も良い結果（尤度が高い、またはRMSEが低い）を採用します。局所解を避けるために有効です。
+
+- **trial** (int): 試行回数。
+
+## その他のモデル
+
+以下のモデルも同様のインターフェースで使用可能です。
+
+- **LorentzianMixtureModel**: ローレンツ分布混合モデル
+- **PseudoVoigtMixtureModel**: 擬Voigt分布混合モデル
+- **DoniachSunjicMixtureModel**: Doniach-Sunjic分布混合モデル
+
+これらは `EMPeaks.LorentzianMixture` などのサブパッケージからインポートできます。
+    </script>
+
+    <script type="text/markdown" id="doc-deps">
+# 依存関係とリスク管理
+
+本プロジェクトが依存しているライブラリと、それらに起因する潜在的なリスク（「何もしていないのに壊れた」を防ぐための情報）について記述します。
+
+## 1. 主要な依存ライブラリ
+
+`requirements.txt` および `setup.cfg` に基づく主要な依存関係は以下の通りです。
+
+```mermaid
+graph LR
+    App[EMPeaks] --> NP[NumPy >= 1.21.6]
+    App --> SP[SciPy >= 1.7.3]
+    App --> MP[Matplotlib >= 3.5.3]
+    App --> PD[Pandas >= 1.2.3]
+    
+    style NP fill:#ffcccc,stroke:#f00,stroke-width:2px
+    style SP fill:#ffcccc,stroke:#f00,stroke-width:2px
+```
+
+| ライブラリ | 指定バージョン | 役割 | リスク度 |
+| :--- | :--- | :--- | :--- |
+| **NumPy** | `>= 1.21.6` | 数値計算の基盤。配列操作など。 | **高** |
+| **SciPy** | `>= 1.7.3` | 科学技術計算。最適化 (`optimize`) や積分 (`integrate`) で使用。 | **高** |
+| **Matplotlib** | `>= 3.5.3` | グラフ描画。`plot` メソッドなどで使用。 | 中 |
+| **Pandas** | `>= 1.2.3` | データ操作（現状のコードでは必須性は低いが指定あり）。 | 中 |
+
+## 2. 潜在的なリスクと対策
+
+### バージョン固定の欠如による破損
+現在の `requirements.txt` では `>=` (以上) という指定のみが行われています。
+これにより、**新しいメジャーバージョンがリリースされた際に、自動的に互換性のないバージョンがインストールされる** 可能性があります。
+
+```mermaid
+sequenceDiagram
+    participant Dev as 開発環境
+    participant Repo as PyPI (リポジトリ)
+    participant Prod as 運用環境
+    
+    Note over Dev: NumPy 1.24で動作確認
+    Dev->>Prod: requirements.txt (numpy>=1.21) を共有
+    Note over Repo: NumPy 2.0 (破壊的変更あり) がリリース
+    Prod->>Repo: pip install -r requirements.txt
+    Repo-->>Prod: NumPy 2.0 をインストール (最新のため)
+    Prod->>Prod: 実行 -> エラー発生！
+    Note over Prod: 「何もしていないのに壊れた」
+```
+
+#### 具体的なリスク例
+- **NumPy 2.0**: NumPyはメジャーバージョンアップで古いAPI（例えば `np.float` などの型エイリアス）を削除することがあります。これにより、コードが突然動かなくなる可能性があります。
+- **SciPyの仕様変更**: `scipy.optimize` や `scipy.integrate` の関数の引数や戻り値の仕様が変更されることがあります。
+
+### 対策推奨事項
+
+1.  **バージョンの固定 (Pinning)**
+    運用環境では、動作確認が取れているバージョンを厳密に指定することを推奨します。
+    例: `numpy==1.24.3`
+
+2.  **仮想環境の分離**
+    開発や実行を行う際は、必ず `venv` や `conda` 等でプロジェクト専用の仮想環境を作成し、システム全体のPython環境（Global環境）の影響を受けないようにしてください。
+
+3.  **定期的な依存関係の更新テスト**
+    「何もしていないのに壊れる」を防ぐため、定期的に新しいバージョンのライブラリでテストを実行し、警告（DeprecationWarning）が出ていないか確認してください。
+
+## 3. Pythonバージョン
+`setup.cfg` により、**Python 3.8以上** が必須とされています。
+古いPython環境（3.7以下）では動作しない、または依存ライブラリがインストールできない可能性があります。
+    </script>
+
+    <script type="text/markdown" id="doc-map">
+# ドキュメント構成マップ
+
+現在の `dev_docs` 内のドキュメント構成と役割を可視化したものです。
+
+```mermaid
+graph TD
+    Root[dev_docs/README.md<br/>ドキュメントの入り口] --> Overview
+    Root --> API
+    Root --> Deps
+
+    Overview[project_overview.md<br/>プロジェクト概要・利用方法]
+    Overview -->|内容| Usage[基本的な使い方<br/>ディレクトリ構造]
+
+    API[api_reference.md<br/>APIリファレンス]
+    API -->|内容| Funcs[主要クラス: GaussianMixtureModel<br/>主要メソッド: fit, predict, plot]
+
+    Deps[dependencies.md<br/>依存関係とリスク]
+    Deps -->|内容| Risks[バージョン固定の重要性<br/>NumPy/SciPyの互換性リスク]
+
+    classDef default fill:#f9f9f9,stroke:#333,stroke-width:2px;
+    classDef main fill:#e1f5fe,stroke:#01579b,stroke-width:2px;
+    class Root main;
+```
+    </script>
+
+    <script type="module">
+        import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.esm.min.mjs';
+
+        window.showDoc = async function (docId) {
+            // Update active button
+            document.querySelectorAll('.sidebar button').forEach(b => b.classList.remove('active'));
+            document.getElementById('btn-' + docId).classList.add('active');
+
+            // Get markdown content
+            const mdContent = document.getElementById('doc-' + docId).textContent;
+
+            // Render Markdown
+            const contentDiv = document.getElementById('content');
+            contentDiv.innerHTML = marked.parse(mdContent);
+
+            // Render Mermaid diagrams
+            // 1. Find all code blocks with language 'mermaid'
+            const codeBlocks = contentDiv.querySelectorAll('pre code.language-mermaid');
+
+            // 2. Convert them to div.mermaid
+            for (let i = 0; i < codeBlocks.length; i++) {
+                const block = codeBlocks[i];
+                const pre = block.parentElement;
+                const div = document.createElement('div');
+                div.className = 'mermaid';
+                div.textContent = block.textContent;
+                pre.replaceWith(div);
+            }
+
+            // 3. Run mermaid
+            mermaid.initialize({ startOnLoad: false, theme: 'default' });
+            await mermaid.run({
+                nodes: document.querySelectorAll('.mermaid')
+            });
+        };
+
+        // Initial load
+        showDoc('readme');
+    </script>
+</body>
+
+</html>
