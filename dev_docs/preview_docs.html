@@ -158,6 +158,9 @@
             <li><button onclick="showDoc('api')" id="btn-api">📄 api_reference.md</button></li>
             <li><button onclick="showDoc('deps')" id="btn-deps">📄 dependencies.md</button></li>
             <li><button onclick="showDoc('map')" id="btn-map">📄 documentation_map.md</button></li>
+            <li><button onclick="showDoc('emcore')" id="btn-emcore">📄 em_core_details.md</button></li>
+            <li><button onclick="showDoc('refactor')" id="btn-refactor">🛠️ refactoring_plan.md</button></li>
+            <li><button onclick="showDoc('gui')" id="btn-gui">🖥️ gui_implementation_plan.md</button></li>
         </ul>
     </div>
 
@@ -494,6 +497,718 @@ graph TD
     class Root main;
 ```
     </script>
+
+    <script type="text/markdown" id="doc-emcore">
+# EMCore 詳細ドキュメント
+
+`EMCore` クラスは EMPeaks ライブラリの中核であり、EM（期待値最大化）アルゴリズムを用いたスペクトルのピークフィッティング機能を提供します。
+
+---
+
+## 🚀 クイックスタート
+
+最も一般的な使い方を3ステップで紹介します。
+
+```python
+from EMPeaks.GaussianMixture import GaussianMixtureModel
+import numpy as np
+
+# ① データの準備
+x = np.linspace(0, 100, 500)
+y = ...  # スペクトルデータ
+
+# ② モデル作成（ピーク数を指定）
+model = GaussianMixtureModel(K=3, background='linear')
+
+# ③ フィッティング実行
+result = model.fit(x, y, method='smart')
+model.plot(x, y)  # 結果を可視化
+```
+
+### 💡 どのメソッドを使えばいい？
+
+```mermaid
+flowchart TD
+    Start[フィッティングしたい] --> Q1{データの品質は？}
+    Q1 -->|ノイズが少ない| A1["method='adapted_em'<br/>(高速・基本)"]
+    Q1 -->|ノイズが多い/複雑| Q2{計算時間の余裕は？}
+    Q2 -->|ある程度OK| A2["method='smart'<br/>(推奨・高精度)"]
+    Q2 -->|なるべく高速に| A3["method='adapted_em' + sampling<br/>(バランス型)"]
+    
+    style A2 fill:#90EE90,stroke:#228B22,stroke-width:2px
+```
+
+> **おすすめ**: 迷ったら `method='smart'` を使ってください。初期値探索→EM→最小二乗法を自動で組み合わせ、高精度な結果を得られます。
+
+---
+
+## 📊 クラス概要
+
+```mermaid
+classDiagram
+    direction LR
+    class EMCore {
+        K : ピーク数
+        model : モデルリスト
+        pi : 混合比
+        fit() フィッティング実行
+        predict() 予測値計算
+        plot() 結果プロット
+    }
+    
+    class Gaussian {
+        mu : 中心位置
+        sigma : 幅
+    }
+    
+    class Background {
+        Uniform
+        Linear
+        RampSum
+    }
+    
+    EMCore *-- Gaussian : K個
+    EMCore *-- Background : 0〜1個
+```
+
+### 主な機能
+
+| 機能 | 説明 |
+|:---|:---|
+| **モデル構築** | ガウスピーク（K個）+ 背景モデルの組み合わせ |
+| **パラメータ推定** | EMアルゴリズムによる最尤推定 |
+| **高度な手法** | サンプリング、決定論的アニーリング、最小二乗法 |
+| **可視化** | Matplotlib によるプロット機能 |
+
+---
+
+## ⚙️ 初期化パラメータ
+
+### `__init__()` のパラメータ一覧
+
+| パラメータ | 型 | デフォルト | 説明 |
+|:---|:---|:---|:---|
+| `K` | int | 2 | ピークの数 |
+| `x_min` | float | -300 | X軸の最小値 |
+| `x_max` | float | 300 | X軸の最大値 |
+| `sigma_min` | float | 0.1 | ピーク幅の下限 |
+| `sigma_max` | float | 50 | ピーク幅の上限 |
+| `background` | str | 'none' | 背景モデルの種類 |
+| `k_ramp` | int | 5 | RampSum用のランプ数 |
+
+### 背景モデルの種類
+
+| 値 | 説明 | 使用場面 |
+|:---|:---|:---|
+| `'none'` | 背景なし | ベースラインが0のデータ |
+| `'uniform'` | 一定値 | フラットなバックグラウンド |
+| `'linear'` | 線形（傾き付き） | 傾斜したベースライン |
+| `'ramp_sum'` | 階段状 | XPSなど複雑な背景 |
+
+---
+
+## 🔧 メソッド一覧
+
+### フィッティング系（最重要）
+
+#### `fit(x, intensity, method='adapted_em', ...)`
+
+**メインのフィッティングメソッド**
+
+| 引数 | 型 | 説明 |
+|:---|:---|:---|
+| `x` | array | X軸データ |
+| `intensity` | array | Y軸データ（強度） |
+| `method` | str | フィッティング手法（下表参照） |
+| `max_iter` | int | 最大反復回数（デフォルト: 100） |
+| `r_eps` | float | 収束判定の閾値（デフォルト: 1e-4） |
+| `trial` | int | サンプリング試行回数（smartの場合） |
+
+**method の種類**
+
+| method | 速度 | 精度 | 説明 |
+|:---|:---|:---|:---|
+| `'adapted_em'` | ⚡高速 | 〇 | 基本のEMアルゴリズム |
+| `'smart'` | 普通 | ◎ | サンプリング→EM→最小二乗法（**推奨**） |
+| `'leastsq'` | 普通 | 〇 | 最小二乗法のみ |
+| `'l2div'` | 普通 | 〇 | L2ダイバージェンス最小化 |
+
+**使用例**
+
+```python
+# 基本的な使い方
+result = model.fit(x, y, method='smart', trial=10)
+
+# 結果の確認
+print(f"RMSE: {result['RMSE']:.4f}")
+print(f"ピーク位置: {result['mu']}")
+```
+
+---
+
+#### `sampling(x, intensity, trial=10, ...)`
+
+**複数の初期値で試行し、最良の結果を選択**
+
+局所解を避けたい場合に有効です。
+
+```python
+# 20回試行して最良の結果を採用
+result = model.sampling(x, y, trial=20)
+```
+
+---
+
+### 予測・評価系
+
+#### `predict(x)`
+
+現在のパラメータでモデルの予測値を計算します。
+
+```python
+x_fine = np.linspace(x.min(), x.max(), 1000)
+y_pred = model.predict(x_fine)
+```
+
+#### `log_likelihood(x, intensity)`
+
+対数尤度を計算します（モデルの当てはまりの良さの指標）。
+
+---
+
+### 可視化系
+
+#### `plot(x_data, intensity)`
+
+フィッティング結果をプロットします。
+
+```python
+model.plot(x, y)  # 元データ + 各ピーク + 合計曲線を表示
+```
+
+---
+
+### パラメータ管理系
+
+| メソッド | 説明 |
+|:---|:---|
+| `set_param(**param)` | パラメータを外部から設定 |
+| `export_param()` | 現在のパラメータを辞書で取得 |
+| `init_param_uniform()` | パラメータをランダム初期化 |
+
+**パラメータの取得例**
+
+```python
+params = model.export_param()
+print(f"ピーク位置: {params['mu']}")
+print(f"ピーク幅: {params['sigma']}")
+print(f"混合比: {params['pi']}")
+```
+
+---
+
+## 🔄 処理フロー
+
+### EMアルゴリズムの流れ
+
+```mermaid
+flowchart LR
+    subgraph EM["EMアルゴリズム"]
+        direction TB
+        E["E-Step<br/>各データ点の<br/>所属確率を計算"]
+        M["M-Step<br/>パラメータ更新<br/>(μ, σ, π)"]
+        E --> M --> E
+    end
+    
+    Init[初期値設定] --> EM
+    EM --> Conv{収束？}
+    Conv -->|No| EM
+    Conv -->|Yes| Result[結果出力]
+```
+
+### `method='smart'` の処理フロー
+
+```mermaid
+flowchart LR
+    A[開始] --> B["①サンプリング<br/>(複数の初期値で試行)"]
+    B --> C["②最良の初期値を選択"]
+    C --> D["③高精度EM"]
+    D --> E["④最小二乗法で微調整"]
+    E --> F[完了]
+    
+    style E fill:#90EE90
+```
+
+---
+
+## 📝 実践的な使用例
+
+### 例1: 基本的なピークフィッティング
+
+```python
+from EMPeaks.GaussianMixture import GaussianMixtureModel
+import numpy as np
+
+# サンプルデータ生成
+x = np.linspace(0, 100, 500)
+y = (50 * np.exp(-((x-30)**2)/(2*5**2)) + 
+     80 * np.exp(-((x-60)**2)/(2*8**2)) + 
+     np.random.normal(0, 2, len(x)))
+
+# フィッティング
+model = GaussianMixtureModel(K=2, x_min=0, x_max=100, background='uniform')
+result = model.fit(x, y, method='smart', trial=10)
+
+# 結果確認
+print(f"ピーク1: 位置={result['mu'][0]:.2f}, 幅={result['sigma'][0]:.2f}")
+print(f"ピーク2: 位置={result['mu'][1]:.2f}, 幅={result['sigma'][1]:.2f}")
+
+model.plot(x, y)
+```
+
+### 例2: XPSスペクトル解析（背景あり）
+
+```python
+# XPSデータでは ramp_sum 背景がよく使われます
+model = GaussianMixtureModel(
+    K=4,  # 4つのピーク
+    x_min=280, x_max=295,  # 結合エネルギー範囲
+    background='ramp_sum',
+    k_ramp=10
+)
+
+result = model.fit(x_xps, y_xps, method='smart', trial=20)
+```
+
+### 例3: パラメータの初期値を指定
+
+```python
+model = GaussianMixtureModel(K=2)
+
+# 既知の初期値を設定
+model.set_param(
+    mu=[30, 60],      # ピーク位置の初期推定
+    sigma=[5, 8],     # ピーク幅の初期推定
+    pi=[0.4, 0.6]     # 混合比
+)
+
+# その初期値からフィッティング開始
+result = model.fit(x, y, method='adapted_em')
+```
+
+---
+
+## ⚠️ 注意点とTips
+
+> **💡 ピーク数Kの選び方**
+> 
+> Kが大き過ぎると過学習、小さ過ぎるとフィットが悪くなります。
+> 複数のKで試して、RMSEやBICを比較するのがベストです。
+
+> **💡 収束しない場合**
+> 
+> - `max_iter` を増やす（デフォルト100→500など）
+> - `method='smart'` で `trial` を増やす
+> - 初期値を `set_param()` で手動設定
+
+> **💡 計算が遅い場合**
+> 
+> - データ点数を減らす（ダウンサンプリング）
+> - `trial` を減らす
+> - `method='adapted_em'` を使用
+    </script>
+
+    <script type="text/markdown" id="doc-refactor">
+# EMCore リファクタリング計画書
+
+**作成日**: 2025-12-18  
+**対象ファイル**: `EMPeaks/EMCore/_em_core.py`  
+**現在の行数**: 681行
+
+---
+
+## 📋 概要
+
+本ドキュメントは `EMCore` クラスのリファクタリング計画を記述したものです。コードの保守性、可読性、テスタビリティの向上を目的とします。
+
+### 現状の課題
+
+```mermaid
+mindmap
+  root((EMCore の課題))
+    コードの重複
+      背景モデル初期化が複数箇所に分散
+      __init__とset_param_backgroundで同じ処理
+    クラスの責務過多
+      初期化
+      フィッティング
+      可視化
+      パラメータ管理
+    マジックナンバー
+      1.0e-4
+      1e-200
+      0.1
+    エラーハンドリング
+      printによるエラー通知
+      例外が投げられない
+```
+
+---
+
+## 🎯 リファクタリング目標
+
+| 優先度 | 項目 | 効果 |
+|:---:|:---|:---|
+| 🔴 高 | 背景モデル初期化の統合 | コード重複削減、バグ防止 |
+| 🔴 高 | 定数の命名・整理 | 可読性向上、意図の明確化 |
+| 🟡 中 | 責務の分離 | 保守性向上、テスタビリティ向上 |
+| 🟡 中 | エラーハンドリング改善 | デバッグ容易化 |
+| 🟢 低 | 型ヒントの追加 | IDE補完、ドキュメント効果 |
+| 🟢 低 | ログ機能の導入 | 本番運用対応 |
+
+---
+
+## 🔧 リファクタリング詳細
+
+### Phase 1: 定数の整理（低リスク）
+
+**現状の問題**
+
+```python
+# 散在するマジックナンバー
+self.pi = np.append(self.pi, 1.0e-4)  # 行33, 38, 43
+eps = 1e-20                            # 行479
+self.log_likelihood(...) + 1e-200      # 行224
+```
+
+**改善案**
+
+```python
+class EMCore:
+    # クラス定数として定義
+    INITIAL_BACKGROUND_WEIGHT = 1.0e-4
+    EPSILON_PREDICT = 1e-20
+    EPSILON_LOG = 1e-200
+    DEFAULT_MAX_ITER = 3000
+    DEFAULT_R_EPS = 1e-9
+```
+
+---
+
+### Phase 2: 背景モデル初期化の統合（中リスク）
+
+**現状の問題**
+
+背景モデルの初期化が3箇所に分散している：
+
+1. `__init__()` (行29-67)
+2. `set_param_background()` (行116-153)
+3. `fit()` (行232-242)
+
+```mermaid
+flowchart LR
+    subgraph Current["現状: 3箇所で分散"]
+        A["__init__()"] --> BG1[背景モデル生成]
+        B["set_param_background()"] --> BG2[背景モデル生成]
+        C["fit()"] --> BG3[背景モデル生成]
+    end
+```
+
+**改善案: ファクトリメソッドの導入**
+
+```python
+def _create_background_model(self, background_type: str) -> list:
+    """背景モデルを生成するファクトリメソッド"""
+    if background_type == 'none':
+        return []
+    elif background_type == 'uniform':
+        return [UniformModel(self.x_min, self.x_max)]
+    elif background_type == 'linear':
+        return [LinearModel(self.x_min, self.x_max)]
+    else:
+        raise ValueError(f"Unknown background type: {background_type}")
+```
+
+---
+
+### Phase 3: 責務の分離（高リスク）
+
+**改善案: 複数クラスへの分割**
+
+```mermaid
+classDiagram
+    class EMCore {
+        +fit()
+        +predict()
+    }
+    
+    class ParameterManager {
+        +set_param()
+        +export_param()
+    }
+    
+    class BackgroundFactory {
+        +create()
+    }
+    
+    class FittingStrategy {
+        +execute()
+    }
+    
+    class Visualizer {
+        +plot()
+    }
+    
+    EMCore --> ParameterManager : uses
+    EMCore --> BackgroundFactory : uses
+    EMCore --> FittingStrategy : uses
+    EMCore --> Visualizer : uses
+```
+
+| 新クラス名 | 責務 |
+|:---|:---|
+| `ParameterManager` | パラメータ管理 |
+| `BackgroundFactory` | 背景モデル生成 |
+| `FittingStrategy` | フィッティング戦略 |
+| `Visualizer` | 可視化 |
+
+---
+
+### Phase 4: エラーハンドリングの改善
+
+**改善案**
+
+```python
+class EMCoreError(Exception):
+    """EMCore関連のエラー基底クラス"""
+    pass
+
+class ParameterError(EMCoreError):
+    """パラメータ設定エラー"""
+    pass
+
+class ConvergenceError(EMCoreError):
+    """収束エラー"""
+    pass
+```
+
+---
+
+## 📅 実装スケジュール案
+
+```mermaid
+gantt
+    title リファクタリング実装スケジュール
+    dateFormat  YYYY-MM-DD
+    section Phase 1
+    定数の整理           :p1, 2025-01-06, 2d
+    section Phase 2
+    背景モデル統合       :p2, after p1, 3d
+    section Phase 3
+    責務分離             :p3, after p2, 7d
+    section Phase 4
+    エラーハンドリング   :p4, after p3, 2d
+    section テスト
+    ユニットテスト作成   :test, after p4, 5d
+```
+
+---
+
+## ⚠️ リスクと対策
+
+| リスク | 影響度 | 対策 |
+|:---|:---:|:---|
+| 後方互換性の破壊 | 高 | 公開APIは維持、内部メソッドのみ変更 |
+| バグの混入 | 高 | 段階的実装 + 各フェーズでの回帰テスト |
+| 性能劣化 | 中 | ベンチマークテストの実施 |
+
+---
+
+## ✅ 成功基準
+
+- [ ] 全てのユニットテストがパス
+- [ ] 既存のデモコード (`empeaks_demo.py`) が動作
+- [ ] コードカバレッジ 80% 以上
+- [ ] 公開API（`fit`, `predict`, `plot`）の互換性維持
+    </script>
+
+    <script type="text/markdown" id="doc-gui">
+# GUI アプリケーション実装計画書
+
+**作成日**: 2025-12-19  
+**ステータス**: 計画中  
+**目的**: EMPeaks のピークフィッティング機能をGUIで操作可能にする
+
+---
+
+## 📋 概要
+
+EMPeaks ライブラリの機能を、コーディング不要で利用できるGUIアプリケーションを開発します。
+
+### 想定ユーザー
+
+- 研究者・分析担当者（Pythonに不慣れな方も含む）
+- スペクトルデータの日常的な解析作業を行う方
+
+---
+
+## 🎯 機能要件
+
+### 必須機能（MVP）
+
+```mermaid
+flowchart LR
+    subgraph Input["📥 入力"]
+        A[ファイル読込]
+        B[データプレビュー]
+    end
+    
+    subgraph Process["⚙️ 処理"]
+        C[パラメータ設定]
+        D[フィッティング実行]
+    end
+    
+    subgraph Output["📤 出力"]
+        E[結果グラフ表示]
+        F[結果エクスポート]
+    end
+    
+    A --> B --> C --> D --> E --> F
+```
+
+| 機能 | 説明 | 優先度 |
+|:---|:---|:---:|
+| ファイル読込 | CSV, Excel, テキストファイルの読み込み | 🔴 必須 |
+| データプレビュー | 読み込んだデータのグラフ表示 | 🔴 必須 |
+| パラメータ設定 | ピーク数(K)、背景モデル、範囲指定 | 🔴 必須 |
+| フィッティング実行 | ワンクリックでfit実行 | 🔴 必須 |
+| 結果グラフ表示 | フィッティング結果の可視化 | 🔴 必須 |
+| 結果エクスポート | CSV/画像での保存 | 🔴 必須 |
+
+---
+
+## 🛠️ 技術選定
+
+### 推奨: Streamlit
+
+| フレームワーク | 言語 | 学習コスト | カスタマイズ性 | デプロイ | 推奨度 |
+|:---|:---|:---:|:---:|:---:|:---:|
+| **Streamlit** | Python | ◎ 低 | ○ 中 | ◎ 容易 | ⭐⭐⭐ |
+| Gradio | Python | ◎ 低 | △ 低 | ◎ 容易 | ⭐⭐ |
+| marimo | Python | ◎ 低 | ○ 中 | △ 中 | ⭐⭐ |
+| PyQt | Python | △ 高 | ◎ 高 | △ 中 | ⭐ |
+
+**選定理由**:
+
+1. **既存コードとの親和性**: EMPeaksはPythonパッケージ
+2. **デプロイの容易さ**: Streamlit Cloudで無料ホスティング可能
+3. **メンテナンス性**: Pythonのみで完結
+
+---
+
+## 📐 UI設計
+
+### 操作フロー
+
+```mermaid
+stateDiagram-v2
+    [*] --> ファイル選択
+    ファイル選択 --> データプレビュー: ファイル読込
+    データプレビュー --> パラメータ調整: 確認OK
+    パラメータ調整 --> フィッティング中: 実行ボタン
+    フィッティング中 --> 結果表示: 完了
+    結果表示 --> パラメータ調整: 再調整
+    結果表示 --> エクスポート: 保存
+    エクスポート --> [*]
+```
+
+---
+
+## 📁 ディレクトリ構成案
+
+```
+EMPeaks/
+├── EMPeaks/              # 既存のパッケージ
+├── gui/                  # 新規: GUIアプリケーション
+│   ├── __init__.py
+│   ├── app.py            # メインアプリ
+│   ├── components/       # UIコンポーネント
+│   └── utils/            # ユーティリティ
+├── empeaks_demo.py       # 既存: marimoデモ
+└── requirements-gui.txt  # GUI用依存関係
+```
+
+---
+
+## 💻 実装サンプル
+
+```python
+import streamlit as st
+import numpy as np
+import pandas as pd
+from EMPeaks.GaussianMixture import GaussianMixtureModel
+
+st.set_page_config(page_title="EMPeaks GUI", layout="wide")
+st.title("📊 EMPeaks - Peak Fitting GUI")
+
+# サイドバー: パラメータ設定
+with st.sidebar:
+    st.header("⚙️ パラメータ設定")
+    uploaded_file = st.file_uploader("📁 データファイルを選択")
+    K = st.slider("ピーク数 (K)", 1, 10, 2)
+    background = st.selectbox("背景モデル", ['none', 'uniform', 'linear'])
+    run_button = st.button("▶️ フィッティング実行")
+
+# メインエリア
+col1, col2 = st.columns([2, 1])
+with col1:
+    st.subheader("📈 グラフ")
+with col2:
+    st.subheader("📋 結果")
+```
+
+---
+
+## 📅 実装スケジュール
+
+```mermaid
+gantt
+    title GUI実装スケジュール
+    dateFormat  YYYY-MM-DD
+    
+    section Phase 1: MVP
+    環境構築・設計        :p1a, 2025-01-13, 2d
+    ファイル読込機能      :p1b, after p1a, 2d
+    パラメータ設定UI      :p1c, after p1b, 2d
+    フィッティング連携    :p1d, after p1c, 3d
+    結果表示・グラフ      :p1e, after p1d, 2d
+    エクスポート機能      :p1f, after p1e, 2d
+    
+    section テスト
+    テスト・バグ修正      :test, after p1f, 3d
+```
+
+---
+
+## ✅ 成功基準
+
+- [ ] CSVファイルを読み込んでフィッティングを実行できる
+- [ ] 結果をグラフと表で表示できる
+- [ ] 結果をCSV/JSONでエクスポートできる
+- [ ] `streamlit run gui/app.py` で起動できる
+
+---
+
+## 🚀 起動方法（想定）
+
+```bash
+pip install -r requirements-gui.txt
+streamlit run gui/app.py
+```
+
+ブラウザで `http://localhost:8501` にアクセスしてGUIを操作できます。
+    </script>
+
 
     <script type="module">
         import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.esm.min.mjs';

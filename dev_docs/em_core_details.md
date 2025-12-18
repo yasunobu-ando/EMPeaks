@@ -1,206 +1,317 @@
 # EMCore 詳細ドキュメント
 
-`EMPeaks/EMCore/_em_core.py` に定義されている `EMCore` クラスは、EMPeaks ライブラリの中核をなすクラスであり、混合ガウスモデル（Gaussian Mixture Model, GMM）を用いたピークフィッティング機能を提供します。
+`EMCore` クラスは EMPeaks ライブラリの中核であり、EM（期待値最大化）アルゴリズムを用いたスペクトルのピークフィッティング機能を提供します。
 
-このドキュメントでは、`EMCore` クラスの全メソッドについて詳細に解説します。
+---
 
-## クラス概要
+## 🚀 クイックスタート
 
-`EMCore` クラスは、観測データ（スペクトルなど）に対して、複数のガウス関数と背景モデルを組み合わせたモデルを適合（フィッティング）させるための機能を持っています。
+最も一般的な使い方を3ステップで紹介します。
 
-### 主な機能
+```python
+from EMPeaks.GaussianMixture import GaussianMixtureModel
+import numpy as np
 
-*   **モデル構築**: 任意の数（`K`）のガウスピークと、様々な種類の背景モデル（Uniform, Linear, SquareRoot, RampSum）を組み合わせることができます。
-*   **パラメータ推定**: 最尤推定法（Maximum Likelihood Estimation）に基づき、EMアルゴリズム（Expectation-Maximization Algorithm）を用いてモデルパラメータを最適化します。
-*   **フィッティング手法**: 通常の EM アルゴリズムに加え、決定論的アニーリング（Deterministic Annealing）や、初期値をランダムに変えて複数回試行するサンプリング機能、最小二乗法（Least Squares）との組み合わせなど、高度なフィッティング手法をサポートしています。
-*   **可視化**: フィッティング結果を可視化するプロット機能を提供します。
+# ① データの準備
+x = np.linspace(0, 100, 500)
+y = ...  # スペクトルデータ
 
-## メソッド詳細リファレンス
+# ② モデル作成（ピーク数を指定）
+model = GaussianMixtureModel(K=3, background='linear')
 
-### 初期化・設定関連
-
-#### `__init__(self, K=2, x_min=-300, x_max=300, sigma_min=0.1, sigma_max=50, background='none', k_ramp=5)`
-クラスのコンストラクタです。
-- **引数**:
-  - `K`: ガウスピークの数。
-  - `x_min`, `x_max`: 定義域の範囲。
-  - `sigma_min`, `sigma_max`: ガウス関数の標準偏差（幅）の制約範囲。
-  - `background`: 背景モデルの種類（'none', 'uniform', 'squareroot', 'linear', 'ramp_sum'）。
-  - `k_ramp`: `background='ramp_sum'` の場合のランプ関数の数。
-- **機能**: 指定された設定でモデル（ガウス関数リストと背景モデル）を初期化します。混合比 `pi` も初期化されます。
-
-#### `set_param(self, **param)`
-モデルのパラメータを外部から設定します。
-- **引数**: 任意のキーワード引数（`K`, `N`, `pi`, `mu`, `sigma` など）。
-- **機能**: 渡された辞書に基づいて、モデルの内部パラメータを更新します。`K` が変更された場合はモデル構造の再構築も行われる可能性があります。
-
-#### `set_param_background(self, **param)`
-背景モデルに関するパラメータを設定・更新します。
-- **引数**: 任意のキーワード引数。
-- **機能**: `background` 属性に基づいて、適切な背景モデル（Uniform, Linear など）を `self.model` リストに追加または再設定します。
-
-#### `extract_single_params(self, param_set, **param)`
-個々のガウスモデル用のパラメータを抽出します。
-- **引数**:
-  - `param_set`: 抽出したいパラメータ名のセット（例: `{"mu", "sigma"}`）。
-  - `**param`: パラメータを含む辞書。
-- **機能**: 入力されたパラメータリストから、各ガウスモデルに対応する値を切り出して辞書リスト形式で返します。
-
-#### `set_single_params(self, **param)`
-個々のガウスモデルにパラメータを設定します。
-- **引数**: 任意のキーワード引数。
-- **機能**: `extract_single_params` を使用してパラメータを整理し、各 `Gaussian` インスタンスの `set_param` メソッドを呼び出して値を設定します。
-
-#### `init_param_uniform(self)`
-パラメータをランダムに初期化します。
-- **機能**: 混合比 `pi` をランダムに設定し、各モデルの `init_model` を呼び出して初期化します。サンプリング手法などで使用されます。
-
-### パラメータ出力関連
-
-#### `export_param(self)`
-現在のモデルパラメータを辞書形式で出力します。
-- **戻り値**: パラメータを含む辞書（`mu`, `sigma`, `pi`, `N` など）。
-- **機能**: 現在の内部状態をまとめて取得するために使用します。ガウスモデルは `mu` の値でソートされて出力されます。
-
-#### `export_single_params(self, _tmp_param)`
-個々のガウスモデルのパラメータを収集し、ソートします。
-- **引数**: パラメータを格納する一時辞書。
-- **機能**: 各 `Gaussian` インスタンスから `mu`, `sigma` を取得し、`mu` の昇順に並べ替えて辞書に格納します。
-
-#### `print_param_summary(self, param)`
-パラメータの要約を標準出力に表示します。
-- **引数**: パラメータ辞書。
-- **機能**: `mu`, `sigma`, `N`, `pi` などの主要な値を整形してコンソールに表示します。
-
-### フィッティング・推定関連
-
-#### `fit(self, x, intensity, method='adapted_em', ...)`
-フィッティング処理のメインエントリポイントです。
-- **引数**:
-  - `x`, `intensity`: データ。
-  - `method`: 手法（'adapted_em', 'smart', 'leastsq', 'l2div'）。
-  - その他: `max_iter`, `r_eps`, `trial` など。
-- **機能**: 指定された `method` に応じて、適切なフィッティングメソッド（`adapted_em`, `leastsq` など）を呼び出します。
-
-#### `adapted_em(self, x, intensity, max_iter, r_eps, stdout)`
-適応的 EM アルゴリズムを実行します。
-- **機能**: E ステップと M ステップを交互に繰り返し、対数尤度が収束するまでパラメータを更新します。収束判定には相対残差 `residual` を使用します。
-
-#### `e_step(self, x)`
-EM アルゴリズムの E (Expectation) ステップです。
-- **機能**: 負担率（各データ点が各モデル成分に属する確率）`_gamma` を計算します。
-
-#### `m_step(self, x, intensity)`
-EM アルゴリズムの M (Maximization) ステップです。
-- **機能**: E ステップで求めた `_gamma` を重みとして、各モデル成分のパラメータ（`mu`, `sigma`）と混合比 `pi` を更新（最尤推定）します。
-
-#### `sampling(self, x, intensity, ...)`
-初期値を変えて複数回フィッティングを行うサンプリング手法です。
-- **機能**: `trial` 回数分、ランダムな初期値から `fit` を実行し、最も良い結果（尤度最大または RMSE 最小）を返します。局所解回避に有効です。
-
-#### `deterministic_annealing(self, x, intensity, ...)`
-決定論的アニーリング法によるフィッティングです。
-- **機能**: 温度パラメータを徐々に下げながらフィッティングを行うことで、大域的最適解を探索します。
-
-#### `leastsq_for_normalization_factor(self, x, intensity, stdout)`
-全体の強度スケール（正規化係数 `N_tot`）を最小二乗法で最適化します。
-- **機能**: EM アルゴリズムの後に実行され、スペクトル全体の強度合わせを行います。
-
-#### `l2_div(self, x, intensity, stdout)`
-L2 ダイバージェンス最小化に基づくフィッティングを行います。
-- **機能**: 尤度最大化ではなく、モデルとデータの L2 距離（二乗誤差）を最小化するようにパラメータを最適化します。`scipy.optimize.least_squares` を使用します。
-
-### 予測・評価・可視化
-
-#### `predict(self, x)`
-現在のモデルによる予測値を計算します。
-- **引数**: x 座標の配列。
-- **戻り値**: 予測された強度（配列）。
-- **機能**: 全てのモデル成分（ガウスピーク + 背景）の値を加重和して返します。
-
-#### `log_likelihood(self, x, intensity)`
-対数尤度を計算します。
-- **機能**: 現在のモデルがデータをどれくらいよく説明できているかを示す指標（対数尤度）を計算します。
-
-#### `plot(self, x_data, intensity)`
-結果をプロットします。
-- **機能**: 元データと、フィッティングされた各成分（各ガウスピーク、背景）、および全モデルの曲線を Matplotlib でグラフ描画します。
-
-#### `add_hist_model(self, info, hist_model, trial)`
-サンプリング履歴を情報辞書に追加します。
-- **機能**: 複数回試行した際の各回のパラメータ（`mu`, `sigma`）を履歴として保存します。
-
-## クラス図と処理フロー
-
-以下に `EMCore` のクラス構造とフィッティングプロセスの概要を Mermaid 図で示します。
-
-```mermaid
-classDiagram
-    class EMCore {
-        +int K
-        +float x_min, x_max
-        +list model
-        +array pi
-        +__init__(K, background, ...)
-        +fit(x, intensity, method, ...)
-        +predict(x)
-        +adapted_em(x, intensity, ...)
-        +e_step(x)
-        +m_step(x, intensity)
-    }
-    class Gaussian {
-        +float mu
-        +float sigma
-        +predict(x)
-        +maximum_likelihood_estimation(...)
-    }
-    class BackgroundModel {
-        <<interface>>
-        +predict(x)
-    }
-    class UniformModel
-    class LinearModel
-    
-    EMCore *-- Gaussian : contains K instances
-    EMCore *-- BackgroundModel : contains 1 instance (optional)
-    BackgroundModel <|-- UniformModel
-    BackgroundModel <|-- LinearModel
+# ③ フィッティング実行
+result = model.fit(x, y, method='smart')
+model.plot(x, y)  # 結果を可視化
 ```
+
+### 💡 どのメソッドを使えばいい？
 
 ```mermaid
 flowchart TD
-    A[Start Fit] --> B{Method?}
-    B -- adapted_em --> C[Initialize Parameters]
-    C --> D[E-Step: Calculate Gamma]
-    D --> E[M-Step: Update Parameters]
-    E --> F{Converged?}
-    F -- No --> D
-    F -- Yes --> G[Finalize & Return Result]
+    Start[フィッティングしたい] --> Q1{データの品質は？}
+    Q1 -->|ノイズが少ない| A1["method='adapted_em'<br/>（高速・基本）"]
+    Q1 -->|ノイズが多い/複雑| Q2{計算時間の余裕は？}
+    Q2 -->|ある程度OK| A2["method='smart'<br/>（推奨・高精度）"]
+    Q2 -->|なるべく高速に| A3["method='adapted_em' + sampling<br/>（バランス型）"]
     
-    B -- smart --> H[Sampling (Multiple Trials)]
-    H --> I[Select Best Initial Param]
-    I --> J[High Precision EM]
-    J --> K[Least Squares Refinement]
-    K --> G
+    style A2 fill:#90EE90,stroke:#228B22,stroke-width:2px
 ```
 
-## 使用例
+> **おすすめ**: 迷ったら `method='smart'` を使ってください。初期値探索→EM→最小二乗法を自動で組み合わせ、高精度な結果を得られます。
+
+---
+
+## 📊 クラス概要
+
+```mermaid
+classDiagram
+    direction LR
+    class EMCore {
+        K : ピーク数
+        model : モデルリスト
+        pi : 混合比
+        fit() フィッティング実行
+        predict() 予測値計算
+        plot() 結果プロット
+    }
+    
+    class Gaussian {
+        mu : 中心位置
+        sigma : 幅
+    }
+    
+    class Background {
+        Uniform
+        Linear
+        RampSum
+    }
+    
+    EMCore *-- Gaussian : K個
+    EMCore *-- Background : 0〜1個
+```
+
+### 主な機能
+
+| 機能 | 説明 |
+|:---|:---|
+| **モデル構築** | ガウスピーク（K個）+ 背景モデルの組み合わせ |
+| **パラメータ推定** | EMアルゴリズムによる最尤推定 |
+| **高度な手法** | サンプリング、決定論的アニーリング、最小二乗法 |
+| **可視化** | Matplotlib によるプロット機能 |
+
+---
+
+## ⚙️ 初期化パラメータ
+
+### `__init__()` のパラメータ一覧
+
+| パラメータ | 型 | デフォルト | 説明 |
+|:---|:---|:---|:---|
+| `K` | int | 2 | ピークの数 |
+| `x_min` | float | -300 | X軸の最小値 |
+| `x_max` | float | 300 | X軸の最大値 |
+| `sigma_min` | float | 0.1 | ピーク幅の下限 |
+| `sigma_max` | float | 50 | ピーク幅の上限 |
+| `background` | str | 'none' | 背景モデルの種類 |
+| `k_ramp` | int | 5 | RampSum用のランプ数 |
+
+### 背景モデルの種類
+
+| 値 | 説明 | 使用場面 |
+|:---|:---|:---|
+| `'none'` | 背景なし | ベースラインが0のデータ |
+| `'uniform'` | 一定値 | フラットなバックグラウンド |
+| `'linear'` | 線形（傾き付き） | 傾斜したベースライン |
+| `'ramp_sum'` | 階段状 | XPSなど複雑な背景 |
+
+---
+
+## 🔧 メソッド一覧
+
+### フィッティング系（最重要）
+
+#### `fit(x, intensity, method='adapted_em', ...)`
+
+**メインのフィッティングメソッド**
+
+| 引数 | 型 | 説明 |
+|:---|:---|:---|
+| `x` | array | X軸データ |
+| `intensity` | array | Y軸データ（強度） |
+| `method` | str | フィッティング手法（下表参照） |
+| `max_iter` | int | 最大反復回数（デフォルト: 100） |
+| `r_eps` | float | 収束判定の閾値（デフォルト: 1e-4） |
+| `trial` | int | サンプリング試行回数（smartの場合） |
+
+**method の種類**
+
+| method | 速度 | 精度 | 説明 |
+|:---|:---|:---|:---|
+| `'adapted_em'` | ⚡高速 | 〇 | 基本のEMアルゴリズム |
+| `'smart'` | 普通 | ◎ | サンプリング→EM→最小二乗法（**推奨**） |
+| `'leastsq'` | 普通 | 〇 | 最小二乗法のみ |
+| `'l2div'` | 普通 | 〇 | L2ダイバージェンス最小化 |
+
+**使用例**
 
 ```python
-from EMPeaks.EMCore._em_core import EMCore
+# 基本的な使い方
+result = model.fit(x, y, method='smart', trial=10)
+
+# 結果の確認
+print(f"RMSE: {result['RMSE']:.4f}")
+print(f"ピーク位置: {result['mu']}")
+```
+
+---
+
+#### `sampling(x, intensity, trial=10, ...)`
+
+**複数の初期値で試行し、最良の結果を選択**
+
+局所解を避けたい場合に有効です。
+
+```python
+# 20回試行して最良の結果を採用
+result = model.sampling(x, y, trial=20)
+```
+
+---
+
+### 予測・評価系
+
+#### `predict(x)`
+
+現在のパラメータでモデルの予測値を計算します。
+
+```python
+x_fine = np.linspace(x.min(), x.max(), 1000)
+y_pred = model.predict(x_fine)
+```
+
+#### `log_likelihood(x, intensity)`
+
+対数尤度を計算します（モデルの当てはまりの良さの指標）。
+
+---
+
+### 可視化系
+
+#### `plot(x_data, intensity)`
+
+フィッティング結果をプロットします。
+
+```python
+model.plot(x, y)  # 元データ + 各ピーク + 合計曲線を表示
+```
+
+---
+
+### パラメータ管理系
+
+| メソッド | 説明 |
+|:---|:---|
+| `set_param(**param)` | パラメータを外部から設定 |
+| `export_param()` | 現在のパラメータを辞書で取得 |
+| `init_param_uniform()` | パラメータをランダム初期化 |
+
+**パラメータの取得例**
+
+```python
+params = model.export_param()
+print(f"ピーク位置: {params['mu']}")
+print(f"ピーク幅: {params['sigma']}")
+print(f"混合比: {params['pi']}")
+```
+
+---
+
+## 🔄 処理フロー
+
+### EMアルゴリズムの流れ
+
+```mermaid
+flowchart LR
+    subgraph EM["EMアルゴリズム"]
+        direction TB
+        E["E-Step<br/>各データ点の<br/>所属確率を計算"]
+        M["M-Step<br/>パラメータ更新<br/>(μ, σ, π)"]
+        E --> M --> E
+    end
+    
+    Init[初期値設定] --> EM
+    EM --> Conv{収束？}
+    Conv -->|No| EM
+    Conv -->|Yes| Result[結果出力]
+```
+
+### `method='smart'` の処理フロー
+
+```mermaid
+flowchart LR
+    A[開始] --> B["①サンプリング<br/>(複数の初期値で試行)"]
+    B --> C["②最良の初期値を選択"]
+    C --> D["③高精度EM"]
+    D --> E["④最小二乗法で微調整"]
+    E --> F[完了]
+    
+    style E fill:#90EE90
+```
+
+---
+
+## 📝 実践的な使用例
+
+### 例1: 基本的なピークフィッティング
+
+```python
+from EMPeaks.GaussianMixture import GaussianMixtureModel
 import numpy as np
 
-# データの準備 (例)
-x = np.linspace(-10, 10, 100)
-y = ... # 観測データ
+# サンプルデータ生成
+x = np.linspace(0, 100, 500)
+y = (50 * np.exp(-((x-30)**2)/(2*5**2)) + 
+     80 * np.exp(-((x-60)**2)/(2*8**2)) + 
+     np.random.normal(0, 2, len(x)))
 
-# モデルの初期化 (2つのピーク + 一様背景)
-em = EMCore(K=2, x_min=-10, x_max=10, background='uniform')
+# フィッティング
+model = GaussianMixtureModel(K=2, x_min=0, x_max=100, background='uniform')
+result = model.fit(x, y, method='smart', trial=10)
 
-# フィッティング実行
-result = em.fit(x, y, method='smart', trial=5)
+# 結果確認
+print(f"ピーク1: 位置={result['mu'][0]:.2f}, 幅={result['sigma'][0]:.2f}")
+print(f"ピーク2: 位置={result['mu'][1]:.2f}, 幅={result['sigma'][1]:.2f}")
 
-# 結果の表示
-print(result)
-em.plot(x, y)
+model.plot(x, y)
 ```
+
+### 例2: XPSスペクトル解析（背景あり）
+
+```python
+# XPSデータでは ramp_sum 背景がよく使われます
+model = GaussianMixtureModel(
+    K=4,  # 4つのピーク
+    x_min=280, x_max=295,  # 結合エネルギー範囲
+    background='ramp_sum',
+    k_ramp=10
+)
+
+result = model.fit(x_xps, y_xps, method='smart', trial=20)
+```
+
+### 例3: パラメータの初期値を指定
+
+```python
+model = GaussianMixtureModel(K=2)
+
+# 既知の初期値を設定
+model.set_param(
+    mu=[30, 60],      # ピーク位置の初期推定
+    sigma=[5, 8],     # ピーク幅の初期推定
+    pi=[0.4, 0.6]     # 混合比
+)
+
+# その初期値からフィッティング開始
+result = model.fit(x, y, method='adapted_em')
+```
+
+---
+
+## ⚠️ 注意点とTips
+
+> **💡 ピーク数Kの選び方**
+> 
+> Kが大き過ぎると過学習、小さ過ぎるとフィットが悪くなります。
+> 複数のKで試して、RMSEやBICを比較するのがベストです。
+
+> **💡 収束しない場合**
+> 
+> - `max_iter` を増やす（デフォルト100→500など）
+> - `method='smart'` で `trial` を増やす
+> - 初期値を `set_param()` で手動設定
+
+> **💡 計算が遅い場合**
+> 
+> - データ点数を減らす（ダウンサンプリング）
+> - `trial` を減らす
+> - `method='adapted_em'` を使用
