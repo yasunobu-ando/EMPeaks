@@ -66,7 +66,7 @@ class GaussianMixtureModel(EMCore):
 #
 #     def predict(self, x):
 #         p = np.sum([self.peak_model.pi[k] * self.peak_model.model[k].cdf(x) for k in range(self.K)], axis=0)
-#         z = integrate.trapz(p, x)
+#         z = integrate.trapezoid(p, x)
 #         return p/z
 #
 #     def _LL(self, x, weight):

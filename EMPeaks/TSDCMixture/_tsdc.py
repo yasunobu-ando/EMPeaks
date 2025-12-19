@@ -95,7 +95,7 @@ class TSDC:
                        np.exp(- self.Ea / kB / T
                               - 1 / self.beta / self.tau0
                               * np.array(T * expn(2, self.Ea*inv_kB / T)))
-        return prob / (integrate.trapz(prob, T) + 1.0e-100)
+        return prob / (integrate.trapezoid(prob, T) + 1.0e-100)
 
     def maximum_likelihood_estimation(self, T, intensity):
         # for sparse modeling with Dirichlet prior with alpha less than 0.
@@ -202,7 +202,7 @@ class TSDC:
         init_param = np.zeros(3)
         init_param[0] = self.tau0
         init_param[1] = self.Ea
-        init_param[2] = integrate.trapz(intensity, T) / self.beta
+        init_param[2] = integrate.trapezoid(intensity, T) / self.beta
 
         start = time.time()
         lb = [0]
@@ -260,7 +260,7 @@ class TSDC:
         init_param = np.zeros(3)
         init_param[0] = self.Tp
         init_param[1] = self.Ea
-        init_param[2] = integrate.trapz(intensity, T) / self.beta
+        init_param[2] = integrate.trapezoid(intensity, T) / self.beta
 
         lb = [self.T_min]
         ub = [self.T_max]
@@ -337,7 +337,7 @@ class TSDC:
         self.Ea = info['x'][0]
         self.Tp = info['x'][1]
         self.tau0 = self.get_tau0()
-        self.P0 = np.trapz(intensity, T) / self.beta
+        self.P0 = integrate.trapezoid(intensity, T) / self.beta
         return
 
     def find_root(self, T, intensity):
@@ -354,7 +354,7 @@ class TSDC:
         self.Ea = optimize.brentq(f_g_diff, self.Ea_min, self.Ea_max, args=(T, intensity, self.beta))
         self.tau0 = f_sum(self.Ea, T, intensity) / (self.beta * np.sum(intensity))
         self.Tp = self.get_Tp()
-        self.P0 = np.trapz(intensity, T) / self.beta
+        self.P0 = integrate.trapezoid(intensity, T) / self.beta
 
         return
 
@@ -376,7 +376,7 @@ class TSDC:
         self.Ea = info['x'][0]
         self.Tp = info['x'][1]
         self.tau0 = self.get_tau0()
-        self.P0 = np.trapz(intensity, T) / self.beta
+        self.P0 = integrate.trapezoid(intensity, T) / self.beta
         return
 
     def fisher_matrix(self, T, intensity):
