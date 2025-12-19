@@ -6,7 +6,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from scipy import optimize
 from scipy.special import gamma
-from scipy.integrate import trapz
+from scipy.integrate import trapezoid
 
 
 class DoniachSunjic:
@@ -47,7 +47,7 @@ class DoniachSunjic:
     def predict(self, x):
         pdf = gamma(1-self.alpha)/((x-self.x0)**2 + self.gamma**2)**((1-self.alpha)/2.0)
         pdf = pdf * np.cos((np.pi * self.alpha)/2 + (1 - self.alpha) * np.arctan((x-self.x0)/self.gamma))
-        z = trapz(pdf, x)
+        z = trapezoid(pdf, x)
         return pdf/z
 
     def log_likelihood(self, x, intensity):

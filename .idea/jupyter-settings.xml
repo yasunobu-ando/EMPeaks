@@ -7,11 +7,10 @@
           <value>
             <JupyterConnectionParameters>
               <option name="managed" value="true" />
-              <option name="sdkHomePath" value="$USER_HOME$/.conda/envs/pycharm/bin/python" />
             </JupyterConnectionParameters>
           </value>
         </entry>
-        <entry key="$PROJECT_DIR$/../../src/Docker/基盤A/pimd_on_jupyter/work/Mn_solution/.idea/Mn_solution.iml">
+        <entry key="$USER_HOME$/src/Docker/基盤A/pimd_on_jupyter/work/Mn_solution/.idea/Mn_solution.iml">
           <value>
             <JupyterConnectionParameters>
               <option name="managed" value="true" />
