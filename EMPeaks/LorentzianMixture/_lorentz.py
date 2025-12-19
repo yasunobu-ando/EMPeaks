@@ -42,7 +42,7 @@ class Lorentzian:
 
     def predict(self, x):
         prob = 1.0/(np.pi * self._Z()) * (1.0 * self.gamma)/((x-self.x0)**2 + (0.50 * self.gamma)**2)
-        return prob / integrate.trapz(prob, x)
+        return prob / integrate.trapezoid(prob, x)
 
     def log_likelihood(self, x, intensity):
         return np.sum(intensity * np.log(self.predict(x) + 1e-200))
@@ -99,6 +99,9 @@ class Lorentzian:
         return optimize.brentq(_f, _interval_g[0], _interval_g[1])
 
     def maximum_likelihood_estimation(self, x, intensity, n_partition_x0=100):
+        # for sparse modeling with Dirichlet prior with alpha less than 0.
+        if np.sum(intensity) == 0:
+            return
         #print('MLE via root search method.')
         #self.root_search(x, intensity, n_partition_x0)
         #print('MLE via bfgs method.')

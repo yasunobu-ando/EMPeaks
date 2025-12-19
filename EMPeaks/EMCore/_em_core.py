@@ -67,6 +67,7 @@ class EMCore:
             print("Setting Background is not implemented.")
         self.N_tot = 1.0
         self.N = self.pi * self.N_tot
+        self.Dirichlet_alpha = np.ones(self.K_all)
 
     def set_param(self, **param):
         """
@@ -224,7 +225,6 @@ class EMCore:
 
     def fit(self, x, intensity, method='adapted_em', max_iter=3000, r_eps=1e-9,
             stdout=True, trial=10, criteria='likelihood'):
-        print("**** Start spectrum fitting via EM algorithm ****")
         print("background: {}".format(self.background))
 
         self.x_min = np.min(x)
@@ -245,14 +245,23 @@ class EMCore:
         #     self.model.append(Sharley(self.K, self.x_min, self.x_max))
 
         if method == 'leastsq':
+            print("**** Start spectrum fitting via Least-Square algorithm ****")
             info = self.leastsq(x, intensity, stdout)
             return info
 
         if method == 'l2div':
+            print("**** Start spectrum fitting via L2-divergence based algorithm ****")
             info = self.l2_div(x, intensity, stdout)
             return info
 
+        if method == 'leastsq_tau0':
+            print("**** Start spectrum fitting via L2-divergence based algorithm ****")
+            print("**** leastsq_tau0 works only in TSDC model.")
+            info = self.leastsq_tau0(x, intensity, stdout)
+            return info
+
         elif method == 'adapted_em':
+            print("**** Start spectrum fitting via EM algorithm ****")
             info = self.adapted_em(x, intensity, max_iter, r_eps, stdout)
             return info
 
@@ -321,6 +330,52 @@ class EMCore:
               '   RMSE:     {:12.8e}\n'.format(info['LL_hist'][index_best], info['RMSE_hist'][index_best])
               )
 
+        return info
+
+    def deterministic_annealing(self, x, intensity,  max_iter=3000, r_eps=1e-9,
+                                temp0=3, n_temp=5, stdout=False):
+        """
+        temp0: in reference, t_0
+        n_temp: number of stages of annealing temperature. In reference, H.
+        """
+        print("Start deterministic annealing.")
+        print("Please check class variable Dirichlet_alpha: {}".format(self.Dirichlet_alpha))
+        print("If Dirichlet_alpha is one, no sparsity is introduced.")
+
+        # confirm the validity of temp0
+        print("Average of data intensity: ", np.average(intensity))
+        # creating temperature profile
+        temp_power = np.array([temp0 + (h-1)*(np.log10(np.sum(intensity))-temp0)/(n_temp-1) 
+                                 for h in range(1, n_temp+1)])
+        temp_profile = np.array([np.sum(intensity)/10**temp_power[h] for h in range(0,n_temp)])
+
+        hist_model = []
+        hist_run_info = []
+        for temp in temp_profile:
+            print("Stage Temperature: {}:".format(temp))
+            run_info = self.fit(x, intensity/temp, method='adapted_em', max_iter=max_iter, r_eps=r_eps, stdout=stdout)
+            tmp_param = copy.deepcopy(self.export_param())
+            hist_model.append(tmp_param)
+            hist_run_info.append(run_info)
+
+        hist_LL = np.array([hist_run_info[i]['LL'] for i in range(n_temp)])
+
+        print('Deterministic Annealing with {:3d} temperature stage is finished.'.format(n_temp))
+        print()
+        info = {'LL_hist': hist_LL,
+                'RMSE_hist': np.array([hist_run_info[i]['RMSE'] for i in range(n_temp)]),
+                'time_hist': np.array([hist_run_info[i]['total_time'] for i in range(n_temp)]),
+                'iter_hist': np.array([hist_run_info[i]['total_iter'] for i in range(n_temp)])
+                }
+        tmp = self.pi[0:self.K]
+        K_non_zero = tmp[tmp>0].size
+        print("number of non zero components of spectrum is {} in {}".format(K_non_zero, self.K))
+        print("index of non zero components of spectrum: ", np.nonzero(tmp)[0])
+        print('Final model parameters and scores of samples are following:')
+        self.print_param_summary(hist_model[-1])
+        print('   LL:      {:12.8e}\n'
+              '   RMSE:     {:12.8e}\n'.format(info['LL_hist'][-1], info['RMSE_hist'][-1])
+              )
         return info
 
     def add_hist_model(self, info, hist_model, trial):
@@ -426,9 +481,13 @@ class EMCore:
                                 / (self.predict(x) + eps) for k in range(self.K_all)])
         return
 
-    def m_step(self, x, intensity):
-        self.pi = np.array([np.sum(intensity * self._gamma[k]) for k in range(self.K_all)])
-        self.pi = self.pi / np.sum(self.pi)
+    def m_step(self, x, intensity):        
+        N_k = np.array([np.sum(intensity * self._gamma[k]) for k in range(self.K_all)])
+        self.pi = (N_k + self.Dirichlet_alpha - 1) / np.sum(N_k + self.Dirichlet_alpha -1)
+        # altering the negative mixing ratio to zero
+        self.pi[self.pi < 0] = 0.0
+        # renormalizing the pi (合ってる？ Is it correct????)
+        self.pi = self.pi/np.sum(self.pi) 
         [self.model[k].maximum_likelihood_estimation(x, intensity * self._gamma[k]) for k in range(self.K_all)]
         return
 
@@ -441,7 +500,7 @@ class EMCore:
         def residual(param, x, y):
             return y - model(x, param)
 
-        init_param = np.abs(integrate.trapz(intensity, x))
+        init_param = np.abs(integrate.trapezoid(intensity, x))
         print('init', init_param)
 
         start = time.time()
@@ -493,7 +552,7 @@ class EMCore:
         init_param = np.zeros(2 * self.K + self.K_all)
         init_param[0:self.K] = [self.model[k].x0 for k in range(self.K)]
         init_param[self.K:2 * self.K] = [self.model[k].gamma for k in range(self.K)]
-        init_param[2 * self.K:2 * self.K + self.K_all] = self.pi * integrate.trapz(intensity, x)
+        init_param[2 * self.K:2 * self.K + self.K_all] = self.pi * integrate.trapezoid(intensity, x)
 
         start = time.time()
         lb = [self.x_min for i in range(self.K)]
@@ -609,7 +668,7 @@ class EMCore:
 #
 #     def predict(self, x):
 #         p = np.sum([self.peak_model.pi[k] * self.peak_model.model[k].cdf(x) for k in range(self.K)], axis=0)
-#         z = integrate.trapz(p, x)
+#         z = integrate.trapezoid(p, x)
 #         return p/z
 #
 #     def _LL(self, x, weight):
