@@ -7,9 +7,14 @@ import streamlit as st
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
+import matplotlib
 from io import StringIO
 import sys
 import os
+
+# Configure matplotlib for Japanese fonts
+matplotlib.rcParams['font.family'] = ['Hiragino Sans', 'Hiragino Kaku Gothic Pro', 'Yu Gothic', 'Meiryo', 'sans-serif']
+matplotlib.rcParams['axes.unicode_minus'] = False
 
 # Add parent directory to path for EMPeaks import
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -69,6 +74,8 @@ if 'result' not in st.session_state:
     st.session_state.result = None
 if 'fitted' not in st.session_state:
     st.session_state.fitted = False
+if 'model' not in st.session_state:
+    st.session_state.model = None
 
 # Sidebar
 with st.sidebar:
@@ -157,8 +164,8 @@ with st.sidebar:
     
     method = st.selectbox(
         "フィッティング手法",
-        ['smart', 'adapted_em', 'leastsq'],
-        help="smart: 推奨（高精度）, adapted_em: 高速"
+        ['adapted_em'],
+        help="adapted_em: EMアルゴリズムによるフィッティング"
     )
     
     with st.expander("🔬 詳細設定"):
@@ -250,11 +257,16 @@ with col2:
                         'RMSE': result_info['RMSE'] if isinstance(result_info, dict) else result_info[1]['RMSE'],
                         'y_fit': model.predict(np.linspace(x.min(), x.max(), 500)) * model.N_tot
                     }
+                    st.session_state.model = model
                     st.session_state.fitted = True
                     st.success("✅ フィッティング完了!")
+                    st.rerun()  # Rerun to update the graph
                     
                 except Exception as e:
                     st.error(f"❌ エラー: {e}")
+                    import traceback
+                    with st.expander("エラー詳細"):
+                        st.code(traceback.format_exc())
                     st.session_state.fitted = False
             else:
                 # Demo mode - simulate fitting
@@ -264,11 +276,15 @@ with col2:
                 from scipy.signal import find_peaks
                 peaks, _ = find_peaks(y, height=np.mean(y))
                 
-                if len(peaks) == 0:
-                    peaks = [len(x)//3, 2*len(x)//3]
+                # Ensure we have enough peaks or use defaults
+                if len(peaks) < K:
+                    # Generate evenly spaced peak positions
+                    peak_positions = np.linspace(x.min() + (x.max()-x.min())*0.1, 
+                                                  x.max() - (x.max()-x.min())*0.1, K)
+                    mu_list = list(peak_positions)
+                else:
+                    mu_list = [float(x[p]) for p in peaks[:K]]
                 
-                # Generate fake results
-                mu_list = [x[p] for p in peaks[:K]]
                 sigma_list = [5.0 + np.random.rand()*3 for _ in range(K)]
                 pi_list = [1.0/K for _ in range(K)]
                 
@@ -276,11 +292,12 @@ with col2:
                     'mu': mu_list,
                     'sigma': sigma_list,
                     'pi': pi_list,
-                    'N_tot': np.sum(y),
-                    'RMSE': np.random.rand() * 5
+                    'N_tot': float(np.sum(y)),
+                    'RMSE': float(np.random.rand() * 5)
                 }
                 st.session_state.fitted = True
                 st.success("✅ フィッティング完了 (デモ)")
+                st.rerun()
     
     # Display results
     if st.session_state.fitted and st.session_state.result is not None:
@@ -325,12 +342,25 @@ with col2:
         with export_col2:
             # JSON export
             import json
+            
+            # Convert numpy arrays to lists for JSON serialization
+            def to_serializable(val):
+                if isinstance(val, np.ndarray):
+                    return val.tolist()
+                if isinstance(val, (np.float32, np.float64)):
+                    return float(val)
+                if isinstance(val, (np.int32, np.int64)):
+                    return int(val)
+                if isinstance(val, list):
+                    return [to_serializable(v) for v in val]
+                return val
+            
             json_data = json.dumps({
-                'mu': result['mu'],
-                'sigma': result['sigma'],
-                'pi': result['pi'][:len(result['mu'])],
-                'N_tot': result['N_tot'],
-                'RMSE': result['RMSE']
+                'mu': to_serializable(result['mu']),
+                'sigma': to_serializable(result['sigma']),
+                'pi': to_serializable(result['pi'][:len(result['mu'])]),
+                'N_tot': to_serializable(result['N_tot']),
+                'RMSE': to_serializable(result['RMSE'])
             }, indent=2)
             st.download_button(
                 label="📋 JSON",
