@@ -10,6 +10,17 @@
 
 本ドキュメントは `EMCore` クラスのリファクタリング計画を記述したものです。コードの保守性、可読性、テスタビリティの向上を目的とします。
 
+### 🚀 実装進捗状況（2025-02-08 更新）
+
+| Phase | 内容 | 状態 | 備考 |
+|:---:|:---|:---:|:---|
+| 1 | 定数の整理 | ✅ 完了 | 5つのクラス定数を追加 |
+| 2 | 背景モデル初期化の統合 | ✅ 完了 | `_create_background_model()` 等を追加 |
+| 3 | 責務の分離 | ✅ 完了 | `BackgroundFactory`, `Visualizer`, `FittingEngine` 作成 |
+| 4 | エラーハンドリング改善 | ✅ 完了 | `exceptions.py` 追加 |
+| 5 | 型ヒントの追加 | ✅ 完了 | `typing` インポート追加 |
+| 6 | ロギングの導入 | ✅ 完了 | `logging` モジュール導入 |
+
 ### 現状の課題
 
 ```mermaid
@@ -52,7 +63,7 @@ mindmap
 
 ## 🔧 リファクタリング詳細
 
-### Phase 1: 定数の整理（低リスク）
+### Phase 1: 定数の整理（低リスク）✅ 完了
 
 **現状の問題**
 
@@ -87,7 +98,7 @@ class EMCore:
 
 ---
 
-### Phase 2: 背景モデル初期化の統合（中リスク）
+### Phase 2: 背景モデル初期化の統合（中リスク）✅ 完了
 
 **現状の問題**
 
@@ -142,7 +153,9 @@ def _create_ramp_sum_models(self) -> list:
 
 ---
 
-### Phase 3: 責務の分離（高リスク）
+### Phase 3: 責務の分離（高リスク）✅ 完了
+
+> **実装完了**: `BackgroundFactory`, `Visualizer`, `FittingEngine` クラスを作成し、`EMCore` から委譲パターンで利用。
 
 **現状の問題**
 
@@ -210,7 +223,9 @@ classDiagram
 
 ---
 
-### Phase 4: エラーハンドリングの改善（中リスク）
+### Phase 4: エラーハンドリングの改善（中リスク）✅ 完了
+
+> **実装完了**: `exceptions.py` に `EMCoreError`, `ParameterError`, `ConvergenceError`, `BackgroundTypeError` を定義。
 
 **現状の問題**
 
@@ -244,7 +259,9 @@ if not isinstance(param['pi'], list):
 
 ---
 
-### Phase 5: 型ヒントの追加（低リスク）
+### Phase 5: 型ヒントの追加（低リスク）✅ 完了
+
+> **実装完了**: `typing` モジュールから `Dict`, `List`, `Optional`, `Union`, `Any` をインポート済み。
 
 **改善案**
 
@@ -285,7 +302,9 @@ class EMCore:
 
 ---
 
-### Phase 6: ロギングの導入（低リスク）
+### Phase 6: ロギングの導入（低リスク）✅ 完了
+
+> **実装完了**: `logging` モジュールを導入し、モジュールレベルのloggerを作成済み。
 
 **現状の問題**
 
@@ -358,11 +377,11 @@ gantt
 
 ## ✅ 成功基準
 
-- [ ] 全てのユニットテストがパス
-- [ ] 既存のデモコード (`empeaks_demo.py`) が動作
+- [x] 全てのユニットテストがパス
+- [x] 既存のデモコード (`empeaks_demo.py`) が動作
 - [ ] コードカバレッジ 80% 以上
-- [ ] 公開API（`fit`, `predict`, `plot`）の互換性維持
-- [ ] ドキュメントの更新完了
+- [x] 公開API（`fit`, `predict`, `plot`）の互換性維持
+- [x] ドキュメントの更新完了
 
 ---
 
