@@ -622,24 +622,6 @@ class EMCore:
 
         return run_info
 
-    def plot(self, x_data, intensity):
-        """フィッティング結果をプロット（Visualizerへ委譲）"""
-        self.dx = x_data[1] - x_data[0]
-        return Visualizer.plot(
-            x_data=x_data,
-            intensity=intensity,
-            model=self.model,
-            N=self.N,
-            N_tot=self.N_tot,
-            predict_func=self.predict,
-            x_min=self.x_min,
-            x_max=self.x_max,
-            dx=self.dx,
-            K=self.K,
-            background=self.background,
-            k_ramp=self.k_ramp
-        )
-
 
 # class Sharley():
 #     def __init__(self, K, x_min, x_max):
