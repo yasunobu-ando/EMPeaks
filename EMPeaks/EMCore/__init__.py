@@ -1,3 +1,4 @@
 from ._em_core import EMCore
-__all__ = ['EMCore']
+from .exceptions import EMCoreError, ParameterError, ConvergenceError, BackgroundTypeError
 
+__all__ = ['EMCore', 'EMCoreError', 'ParameterError', 'ConvergenceError', 'BackgroundTypeError']

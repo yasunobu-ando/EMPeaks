@@ -1,18 +1,16 @@
-Metadata-Version: 2.1
+Metadata-Version: 2.4
 Name: EMPeaks
 Version: 2.1.0
 Summary: 'high-throughput spectrum peak modeling tools by using Spectrum adapted EM algorithms'
-Home-page: UNKNOWN
 Author: Yasunobu Ando
 Author-email: yasunobu.ando@aist.go.jp
-License: UNKNOWN
-Platform: UNKNOWN
 Classifier: Programming Language :: Python :: 3
 Classifier: License :: OSI Approved :: BSD License
 Classifier: Operating System :: OS Independent
 Requires-Python: >=3.8
 Description-Content-Type: text/markdown
 License-File: LICENSE
+Dynamic: license-file
 
 EMPeaks
 ========================
@@ -85,4 +83,3 @@ gmm.plot(x, y)
 
 ---------------
 &copy; 2020-2021 National Institute of Advanced Industrial Science and Technology (AIST)
-
