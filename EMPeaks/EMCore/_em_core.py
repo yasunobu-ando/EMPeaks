@@ -51,13 +51,13 @@ class EMCore:
         if self.background == 'ramp_sum':
             print("RampSum Background is set.")
             self.ramp_node = np.linspace(self.x_min, self.x_max, self.k_ramp + 1, endpoint=False)
-            background_models = self._create_background_model(self.background)
+            background_models = self._bg_factory.create(self.background)
             self.K_all = K + len(background_models)
             self._update_mixture_weights(len(background_models), use_random=True)
         elif self.background == 'none':
             self.K_all = K
         elif self.background in ('uniform', 'squareroot', 'linear'):
-            background_models = self._create_background_model(self.background)
+            background_models = self._bg_factory.create(self.background)
             self.K_all = K + len(background_models)
             self._update_mixture_weights(len(background_models))
             self.model.extend(background_models)
@@ -128,13 +128,13 @@ class EMCore:
         elif self.background == 'ramp_sum':
             self.K_all = self.K + self.k_ramp + 2
             self.ramp_node = np.linspace(self.x_min, self.x_max, self.k_ramp + 1, endpoint=False)
-            background_models = self._create_background_model(self.background)
+            background_models = self._bg_factory.create(self.background)
             self.model.extend(background_models)
         elif self.background in ('uniform', 'squareroot', 'linear'):
             self.K_all = self.K + 1
             # Pass s_tri if provided for linear background
             s_tri = param.get('s_tri', None)
-            background_models = self._create_background_model(self.background, s_tri=s_tri)
+            background_models = self._bg_factory.create(self.background, s_tri=s_tri)
             self.model.extend(background_models)
 
     def extract_single_params(self, param_set, **param):
@@ -196,24 +196,6 @@ class EMCore:
 
         return _tmp_param, _tmp_index
 
-    def _create_background_model(self, background_type, **kwargs):
-        """背景モデルを生成するファクトリメソッド（BackgroundFactoryへ委譲）
-        
-        Args:
-            background_type: 背景タイプ ('none', 'uniform', 'squareroot', 'linear', 'ramp_sum')
-            **kwargs: 追加パラメータ (例: s_tri for linear)
-        
-        Returns:
-            list: 生成された背景モデルのリスト
-        """
-        # Update factory range if needed
-        self._bg_factory.update_range(self.x_min, self.x_max)
-        return self._bg_factory.create(background_type, **kwargs)
-
-    def _create_ramp_sum_models(self):
-        """RampSum用の複合背景モデルを生成（BackgroundFactoryへ委譲）"""
-        return self._bg_factory.create_ramp_sum()
-
     def _update_mixture_weights(self, n_background_models, use_random=False):
         """背景モデル追加時に混合重みを更新
         
@@ -251,12 +233,14 @@ class EMCore:
         
         # Recreate background model with updated x_min/x_max
         if self.background in ('uniform', 'squareroot', 'linear'):
-            self.model[-1] = self._create_background_model(self.background)[0]
+            self._bg_factory.update_range(self.x_min, self.x_max)
+            self.model[-1] = self._bg_factory.create(self.background)[0]
         elif self.background == 'ramp_sum':
             # For ramp_sum, replace the background models (last k_ramp+2 models)
             n_bg = self.k_ramp + 2
             self.model = self.model[:self.K]  # Keep only peak models
-            background_models = self._create_background_model(self.background)
+            self._bg_factory.update_range(self.x_min, self.x_max)
+            background_models = self._bg_factory.create(self.background)
             self.model.extend(background_models)
 
         if method == 'leastsq':
