@@ -7,6 +7,9 @@ from typing import Dict, List, Optional, Union, Any
 
 from EMPeaks.EMCore._gaussian import Gaussian
 from EMPeaks.EMCore.exceptions import BackgroundTypeError, ParameterError
+from EMPeaks.EMCore.background_factory import BackgroundFactory
+from EMPeaks.EMCore.visualizer import Visualizer
+from EMPeaks.EMCore.fitting_engine import FittingEngine
 from EMPeaks.Background import UniformModel, SquareRootModel, LinearModel, TriangleModel, RampModel
 from scipy import integrate
 from scipy import optimize
@@ -37,6 +40,9 @@ class EMCore:
         self.background = background
         self.dx = 1.0
         self.k_ramp = k_ramp  # Store k_ramp for ramp_sum
+        
+        # Initialize BackgroundFactory for delegation
+        self._bg_factory = BackgroundFactory(x_min, x_max, k_ramp)
 
         self.model = [Gaussian(x_min, x_max, sigma_min, sigma_max) for k in range(self.K)]
         self.pi = np.ones(self.K) / self.K
@@ -191,7 +197,7 @@ class EMCore:
         return _tmp_param, _tmp_index
 
     def _create_background_model(self, background_type, **kwargs):
-        """背景モデルを生成するファクトリメソッド
+        """背景モデルを生成するファクトリメソッド（BackgroundFactoryへ委譲）
         
         Args:
             background_type: 背景タイプ ('none', 'uniform', 'squareroot', 'linear', 'ramp_sum')
@@ -200,30 +206,13 @@ class EMCore:
         Returns:
             list: 生成された背景モデルのリスト
         """
-        if background_type == 'none':
-            return []
-        elif background_type == 'uniform':
-            return [UniformModel(self.x_min, self.x_max)]
-        elif background_type == 'squareroot':
-            return [SquareRootModel(self.x_min, self.x_max)]
-        elif background_type == 'linear':
-            s_tri = kwargs.get('s_tri', None)
-            if s_tri is not None and 0 <= s_tri <= 1.0:
-                return [LinearModel(self.x_min, self.x_max, s_tri=s_tri)]
-            else:
-                return [LinearModel(self.x_min, self.x_max)]
-        elif background_type == 'ramp_sum':
-            return self._create_ramp_sum_models()
-        else:
-            raise ValueError(f"Unknown background type: {background_type}")
+        # Update factory range if needed
+        self._bg_factory.update_range(self.x_min, self.x_max)
+        return self._bg_factory.create(background_type, **kwargs)
 
     def _create_ramp_sum_models(self):
-        """RampSum用の複合背景モデルを生成"""
-        models = [UniformModel(self.x_min, self.x_max)]
-        for k in range(self.k_ramp):
-            models.append(RampModel(self.ramp_node[k], self.ramp_node[k + 1], self.x_max))
-        models.append(TriangleModel(self.ramp_node[-1], self.x_max))
-        return models
+        """RampSum用の複合背景モデルを生成（BackgroundFactoryへ委譲）"""
+        return self._bg_factory.create_ramp_sum()
 
     def _update_mixture_weights(self, n_background_models, use_random=False):
         """背景モデル追加時に混合重みを更新
@@ -650,37 +639,22 @@ class EMCore:
         return run_info
 
     def plot(self, x_data, intensity):
-        self.dx=x_data[1]-x_data[0]
-        figsize = (8, 3)
-        fig = plt.figure(figsize=figsize)
-        x = np.arange(self.x_min, self.x_max, self.dx)
-
-        ax = fig.add_subplot(1, 1, 1)
-        if self.background == 'none':
-            for k in range(self.K):
-                ax.plot(x, self.model[k].predict(x) * self.N[k], label='model_' + str(k))
-        elif self.background == 'sharley':
-            for k in range(self.K):
-                ax.plot(x, self.model[k].predict(x) * self.N[k], label='model_' + str(k))
-            y = self.model[-1].predict(x) * self.N[-1] + self.model[-2].predict(x) * self.N[-2]
-            ax.plot(x, y, label=self.background)
-        elif self.background == 'ramp_sum':
-            for k in range(self.K):
-                ax.plot(x, self.model[k].predict(x) * self.N[k], label='model_' + str(k))
-            y = np.sum([self.model[self.K+k].predict(x) * self.N[self.K+k] for k in range(self.k_ramp+2)], axis=0)
-            ax.plot(x, y, label=self.background)
-        else:
-            for k in range(self.K):
-                ax.plot(x, self.model[k].predict(x) * self.N[k], label='model_' + str(k))
-            ax.plot(x, self.model[-1].predict(x) * self.N[-1], label=self.background)
-
-        ax.plot(x, self.predict(x) * self.N_tot, 'black', linewidth=3, ls='--', label='full_model')
-        ax.scatter(x_data, intensity, label='data')
-        ax.set_xlabel('Energy [eV]')
-        ax.set_ylabel('Intensity')
-        ax.legend()
-        plt.show()
-        return
+        """フィッティング結果をプロット（Visualizerへ委譲）"""
+        self.dx = x_data[1] - x_data[0]
+        return Visualizer.plot(
+            x_data=x_data,
+            intensity=intensity,
+            model=self.model,
+            N=self.N,
+            N_tot=self.N_tot,
+            predict_func=self.predict,
+            x_min=self.x_min,
+            x_max=self.x_max,
+            dx=self.dx,
+            K=self.K,
+            background=self.background,
+            k_ramp=self.k_ramp
+        )
 
 
 # class Sharley():
