@@ -124,6 +124,13 @@ TRANSLATIONS = {
 }
 
 LANGUAGE_OPTIONS = {"English": "en", "日本語": "ja"}
+LANGUAGE_LABELS = list(LANGUAGE_OPTIONS.keys())        # ["English", "日本語"]
+
+
+def _on_language_change():
+    """Callback – sync the internal lang code when the dropdown changes."""
+    label = st.session_state["_lang_select"]           # widget value (label)
+    st.session_state["lang"] = LANGUAGE_OPTIONS[label]
 
 
 def init_language():
@@ -131,12 +138,19 @@ def init_language():
     if "lang" not in st.session_state:
         st.session_state["lang"] = "en"
 
-    selected = st.sidebar.selectbox(
+    # Compute default index only on first run; afterward Streamlit keeps
+    # the widget value via its key.
+    if "_lang_select" not in st.session_state:
+        # reverse-lookup: code -> label
+        code_to_label = {v: k for k, v in LANGUAGE_OPTIONS.items()}
+        st.session_state["_lang_select"] = code_to_label[st.session_state["lang"]]
+
+    st.sidebar.selectbox(
         "Language / 言語",
-        list(LANGUAGE_OPTIONS.keys()),
-        index=list(LANGUAGE_OPTIONS.values()).index(st.session_state["lang"]),
+        LANGUAGE_LABELS,
+        key="_lang_select",
+        on_change=_on_language_change,
     )
-    st.session_state["lang"] = LANGUAGE_OPTIONS[selected]
 
 
 def t(key: str) -> str:
