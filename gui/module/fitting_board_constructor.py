@@ -5,6 +5,7 @@ import pandas as pd
 import numpy as np
 import json
 from module.utils import refresh, run
+from module.i18n import t
 
 
 def fitting_board_constructor(db, param):
@@ -14,38 +15,38 @@ def fitting_board_constructor(db, param):
     data_column = db.columns.values
 
     with st.container():
-        st.header("Fitting Dashboard")
+        st.header(t("fitting_dashboard"))
 
         # Settings summary row
         set_col = st.columns([5, 2, 2, 2])
-        set_col[0].metric("Fitting Model", st.session_state['MixtureModel'])
+        set_col[0].metric(t("fitting_model"), st.session_state['MixtureModel'])
         set_col[1].metric("K", st.session_state['K'])
-        set_col[2].metric("Background Model", st.session_state['BackgroundModel'])
-        set_col[3].metric("Trial Frequency", st.session_state['TrialFrequency'])
+        set_col[2].metric(t("background_model"), st.session_state['BackgroundModel'])
+        set_col[3].metric(t("trial_frequency"), st.session_state['TrialFrequency'])
 
         # Chart area with controls
         chart_col = st.columns([1, 5])
 
         # Left column: display items
-        chart_col[0].subheader("items")
+        chart_col[0].subheader(t("items"))
         check_plot = {
-            'Mixture Model': chart_col[0].checkbox('Mixture Model', value=True),
-            'Peaks': [chart_col[0].checkbox(f'Peak #{k}') for k in range(K)],
+            'Mixture Model': chart_col[0].checkbox(t("mixture_model"), value=True),
+            'Peaks': [chart_col[0].checkbox(f'{t("peak")} #{k}') for k in range(K)],
             'Background Model': False
         }
         if st.session_state['BackgroundModel'] != 'none':
-            check_plot['Background Model'] = chart_col[0].checkbox('Background Model')
+            check_plot['Background Model'] = chart_col[0].checkbox(t("background_model"))
 
         # Buttons
-        if chart_col[0].button('START Optimization'):
+        if chart_col[0].button(t("start_optimization")):
             st.session_state['Fitted'] = True
-        if chart_col[0].button('Refresh'):
+        if chart_col[0].button(t("refresh")):
             refresh()
             st.rerun()
 
         # Run fitting
         if st.session_state['Fitted'] and st.session_state['ModelInstance'] is not None:
-            with st.spinner('Fitting...'):
+            with st.spinner(t("fitting_spinner")):
                 st.session_state['ModelInstance'], info = run(
                     st.session_state['ModelInstance'],
                     db[data_column[0]],
@@ -57,15 +58,15 @@ def fitting_board_constructor(db, param):
 
             # Metrics row
             metric_col = st.columns(len(param) + 2)
-            metric_col[0].subheader('Metrics')
-            metric_col[0].caption('Optimization Summary')
-            metric_col[0].metric('Log Likelihood', "{:8.6e}".format(info['LL_hist'][ref_id]))
-            metric_col[0].metric('RMSE', "{:8.6e}".format(info['RMSE_hist'][ref_id]))
-            metric_col[0].metric('TIME [s]', "{:6.4f}".format(info['time_hist'][ref_id]))
+            metric_col[0].subheader(t("metrics"))
+            metric_col[0].caption(t("optimization_summary"))
+            metric_col[0].metric(t("log_likelihood"), "{:8.6e}".format(info['LL_hist'][ref_id]))
+            metric_col[0].metric(t("rmse"), "{:8.6e}".format(info['RMSE_hist'][ref_id]))
+            metric_col[0].metric(t("time_s"), "{:6.4f}".format(info['time_hist'][ref_id]))
 
-            fitting_summary['Log Likelihood'] = info['LL_hist'][ref_id]
-            fitting_summary['RMSE'] = info['RMSE_hist'][ref_id]
-            fitting_summary['TIME [s]'] = info['time_hist'][ref_id]
+            fitting_summary[t("log_likelihood")] = info['LL_hist'][ref_id]
+            fitting_summary[t("rmse")] = info['RMSE_hist'][ref_id]
+            fitting_summary[t("time_s")] = info['time_hist'][ref_id]
 
             # Parameter display
             i = 0
@@ -151,15 +152,15 @@ def fitting_board_constructor(db, param):
 
 def _export_data(col, summary, db):
     """Export data buttons"""
-    col[-1].subheader('Export')
+    col[-1].subheader(t("export"))
     col[-1].download_button(
-        'Download fitting summary(.json)',
+        t("download_json"),
         data=json.dumps(summary, indent=4, default=str),
         file_name='fitting_summary.json',
         mime='application/json'
     )
     col[-1].download_button(
-        'Download Chart Data (chart_db.csv)',
+        t("download_csv"),
         data=db.to_csv(index=False).encode('utf-8'),
         file_name='chart_db.csv',
         mime='text/csv'

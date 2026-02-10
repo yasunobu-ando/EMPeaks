@@ -4,15 +4,16 @@ import altair as alt
 import pandas as pd
 import numpy as np
 from module.utils import refresh
+from module.i18n import t
 
 
 def data_constructor():
     """Build the Data Dashboard"""
     with st.container():
-        st.header('Data Dashboard')
+        st.header(t("data_dashboard"))
 
         # Sidebar: file upload
-        file_uploaded = st.sidebar.file_uploader("Data Upload", type=['csv', 'xlsx'])
+        file_uploaded = st.sidebar.file_uploader(t("data_upload"), type=['csv', 'xlsx'])
 
         if file_uploaded:
             if file_uploaded.name.endswith('.xlsx'):
@@ -35,17 +36,17 @@ def data_constructor():
         data_col = st.columns([2, 3, 5])
 
         # Column 0: variable selection
-        x_variable = data_col[0].selectbox('x variable', data_column, index=0, on_change=refresh)
-        y_variable = data_col[0].selectbox('y variable', data_column, index=min(1, len(data_column) - 1),
+        x_variable = data_col[0].selectbox(t("x_variable"), data_column, index=0, on_change=refresh)
+        y_variable = data_col[0].selectbox(t("y_variable"), data_column, index=min(1, len(data_column) - 1),
                                            on_change=refresh)
 
         # Axis range
-        data_col[0].markdown("### *AXIS*")
-        data_col[0].caption("Integer values only")
+        data_col[0].markdown(f"### *{t('axis')}*")
+        data_col[0].caption(t("axis_caption"))
         x_data_min = int(data[x_variable].min())
         x_data_max = int(data[x_variable].max())
         x_min, x_max = data_col[0].slider(
-            "x Range Slider",
+            t("x_range_slider"),
             min_value=x_data_min,
             max_value=x_data_max,
             value=(x_data_min, x_data_max),

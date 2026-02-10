@@ -1,6 +1,7 @@
 """Model configuration module"""
 import streamlit as st
 from module.utils import init_model, refresh
+from module.i18n import t
 
 MODEL_LIST = ['GaussianMixture', 'LorentzianMixture', 'PseudoVoigtMixture', 'DoniachSunjicMixture']
 BACKGROUND_LIST = ['none', 'uniform', 'linear', 'squareroot', 'ramp_sum']
@@ -9,11 +10,11 @@ BACKGROUND_LIST = ['none', 'uniform', 'linear', 'squareroot', 'ramp_sum']
 def model_constructor(db, x_variable):
     """Build the model configuration panel in the sidebar"""
     with st.container():
-        st.sidebar.header('EMPeaks Parameters')
+        st.sidebar.header(t("empeaks_parameters"))
 
         # Select Mixture Model
         st.session_state['MixtureModel'] = st.sidebar.selectbox(
-            'Select Mixture Model',
+            t("select_mixture_model"),
             MODEL_LIST,
             index=0,
             on_change=refresh
@@ -21,7 +22,7 @@ def model_constructor(db, x_variable):
 
         # K (Component Number)
         st.session_state['K'] = int(st.sidebar.number_input(
-            'K (Component Number)',
+            t("k_component_number"),
             min_value=1,
             max_value=10,
             value=st.session_state.get('K', 3),
@@ -30,7 +31,7 @@ def model_constructor(db, x_variable):
 
         # Select Background Model
         st.session_state['BackgroundModel'] = st.sidebar.selectbox(
-            'Select Background Model',
+            t("select_background_model"),
             BACKGROUND_LIST,
             index=0,
             on_change=refresh
@@ -38,7 +39,7 @@ def model_constructor(db, x_variable):
 
         # Input Trial Frequency
         st.session_state['TrialFrequency'] = int(st.sidebar.number_input(
-            'Input Trial Frequency',
+            t("input_trial_frequency"),
             min_value=1,
             max_value=30,
             value=st.session_state.get('TrialFrequency', 1),
@@ -48,7 +49,7 @@ def model_constructor(db, x_variable):
 
         # Convergence threshold for LL
         st.session_state['Threshold'] = st.sidebar.number_input(
-            'Convergence threshold for LL',
+            t("convergence_threshold"),
             value=st.session_state.get('Threshold', 1e-8),
             step=5e-8,
             format="%f",
@@ -57,7 +58,7 @@ def model_constructor(db, x_variable):
 
         # Max iteration
         st.session_state['MaxIteration'] = int(st.sidebar.number_input(
-            'Convergence threshold for LL',  # Original Deck label (kept as-is)
+            t("max_iteration"),
             value=st.session_state.get('MaxIteration', 1000),
             format="%d",
             on_change=refresh
@@ -78,13 +79,13 @@ def _get_model_param_info():
     model_type = st.session_state['MixtureModel']
 
     if model_type == 'GaussianMixture':
-        return {'mu': 'peak position', 'sigma': 'standard deviation', 'pi': 'mixing ratio'}
+        return {'mu': t('peak_position'), 'sigma': t('standard_deviation'), 'pi': t('mixing_ratio')}
     elif model_type == 'LorentzianMixture':
-        return {'x0': 'peak position', 'gamma': 'Half Width Half Maximum', 'pi': 'mixing ratio'}
+        return {'x0': t('peak_position'), 'gamma': t('hwhm'), 'pi': t('mixing_ratio')}
     elif model_type == 'PseudoVoigtMixture':
-        return {'mu': 'peak position', 'sigma': 'standard deviation', 'eta': 'mixing parameter',
-                'pi': 'mixing ratio'}
+        return {'mu': t('peak_position'), 'sigma': t('standard_deviation'), 'eta': t('mixing_parameter'),
+                'pi': t('mixing_ratio')}
     elif model_type == 'DoniachSunjicMixture':
-        return {'mu': 'peak position', 'sigma': 'standard deviation', 'alpha': 'asymmetry parameter',
-                'pi': 'mixing ratio'}
-    return {'mu': 'peak position', 'sigma': 'standard deviation', 'pi': 'mixing ratio'}
+        return {'mu': t('peak_position'), 'sigma': t('standard_deviation'), 'alpha': t('asymmetry_parameter'),
+                'pi': t('mixing_ratio')}
+    return {'mu': t('peak_position'), 'sigma': t('standard_deviation'), 'pi': t('mixing_ratio')}

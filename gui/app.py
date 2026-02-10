@@ -8,6 +8,7 @@ from module.data_constructor import data_constructor
 from module.model_constructor import model_constructor
 from module.fitting_board_constructor import fitting_board_constructor
 from module.utils import init_application
+from module.i18n import init_language
 
 hide_st_style = """
 <style>
@@ -22,6 +23,9 @@ def main():
 
     # Initialize application
     init_application()
+
+    # Language selector (top of sidebar)
+    init_language()
 
     # Data Constructor: load data and select variables/range
     chart_db, x_variable = data_constructor()
