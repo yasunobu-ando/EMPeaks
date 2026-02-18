@@ -85,13 +85,15 @@ def fitting_board_constructor(db, param):
         # Build chart
         mi = st.session_state['ModelInstance']
         if st.session_state['Fitted'] is False and mi is not None:
-            mi.N_tot = st.session_state['Data'][data_column[1]].sum() if data_column[1] in st.session_state[
-                'Data'].columns else db[data_column[1]].sum()
+            try:
+                src = st.session_state['Data']
+                mi.N_tot = src.iloc[:, 1].sum() if len(src.columns) > 1 else src.iloc[:, 0].sum()
+            except Exception:
+                mi.N_tot = db.iloc[:, 1].sum() if len(db.columns) > 1 else db.iloc[:, 0].sum()
 
-        x = db[data_column[0]]
-        y = db[data_column[1]]
-        x_data = pd.Series(x.values, name=data_column[0])
-        y_data = pd.Series(y.values, name=data_column[1])
+        # Safely extract x/y as Series (use iloc to avoid duplicate-column issues)
+        x_data = pd.Series(db.iloc[:, 0].values, name=data_column[0])
+        y_data = pd.Series(db.iloc[:, 1].values, name=data_column[1])
         fitting_summary['Energy'] = x_data.tolist()
         fitting_summary['Intensity'] = y_data.tolist()
 

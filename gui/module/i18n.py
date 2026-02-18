@@ -62,6 +62,7 @@ TRANSLATIONS = {
         "hwhm": "Half Width Half Maximum",
         "mixing_parameter": "mixing parameter",
         "asymmetry_parameter": "asymmetry parameter",
+        "same_axis_warning": "X and Y must be different columns.",
     },
     "ja": {
         # App
@@ -120,6 +121,7 @@ TRANSLATIONS = {
         "hwhm": "半値半幅",
         "mixing_parameter": "混合パラメータ",
         "asymmetry_parameter": "非対称パラメータ",
+        "same_axis_warning": "X変数とY変数は異なる列を選択してください。",
     },
 }
 
@@ -157,3 +159,196 @@ def t(key: str) -> str:
     """Return the translated string for *key* in the current language."""
     lang = st.session_state.get("lang", "en")
     return TRANSLATIONS.get(lang, TRANSLATIONS["en"]).get(key, key)
+
+
+# ---------------------------------------------------------------------------
+# AgGrid Locale (Japanese)
+# Reference: https://www.ag-grid.com/javascript-data-grid/localisation/
+# ---------------------------------------------------------------------------
+AGGRID_LOCALE_JA = {
+    # Set Filter
+    "selectAll": "(すべて選択)",
+    "selectAllSearchResults": "(すべての検索結果を選択)",
+    "searchOoo": "検索...",
+    "blanks": "(空白)",
+    "noMatches": "一致なし",
+
+    # Number Filter & Text Filter
+    "filterOoo": "フィルター...",
+    "equals": "等しい",
+    "notEqual": "等しくない",
+    "blank": "空白",
+    "notBlank": "空白でない",
+    "empty": "選択してください",
+
+    # Number Filter
+    "lessThan": "より小さい",
+    "greaterThan": "より大きい",
+    "lessThanOrEqual": "以下",
+    "greaterThanOrEqual": "以上",
+    "inRange": "範囲内",
+    "inRangeStart": "から",
+    "inRangeEnd": "まで",
+
+    # Text Filter
+    "contains": "含む",
+    "notContains": "含まない",
+    "startsWith": "で始まる",
+    "endsWith": "で終わる",
+
+    # Date Filter
+    "dateFormatOoo": "yyyy-mm-dd",
+
+    # Filter Conditions
+    "andCondition": "AND",
+    "orCondition": "OR",
+
+    # Header of the Default Group Column
+    "group": "グループ",
+
+    # Tooltips
+    "columns": "列",
+    "filters": "フィルター",
+    "pivotMode": "ピボットモード",
+    "groups": "行グループ",
+    "rowGroupColumnsEmptyMessage": "ここに列をドラッグして行グループを設定",
+    "values": "値",
+    "valueColumnsEmptyMessage": "ここに列をドラッグして集計",
+    "pivots": "列ラベル",
+    "pivotColumnsEmptyMessage": "ここに列をドラッグして列ラベルを設定",
+
+    # Header of the Default Group Column
+    "group": "グループ",
+
+    # Row Drag
+    "rowDragRow": "行",
+    "rowDragRows": "行",
+
+    # Other
+    "loadingOoo": "読み込み中...",
+    "loadingError": "読み込みエラー",
+    "noRowsToShow": "表示する行がありません",
+    "enabled": "有効",
+
+    # Menu
+    "pinColumn": "列を固定",
+    "pinLeft": "左に固定",
+    "pinRight": "右に固定",
+    "noPin": "固定なし",
+    "valueAggregation": "集計",
+    "autosizeThiscolumn": "この列の幅を自動調整",
+    "autosizeAllColumns": "すべての列の幅を自動調整",
+    "groupBy": "グループ化",
+    "ungroupBy": "グループ化解除",
+    "addToValues": "${variable} を値に追加",
+    "removeFromValues": "${variable} を値から削除",
+    "addToLabels": "${variable} をラベルに追加",
+    "removeFromLabels": "${variable} をラベルから削除",
+    "resetColumns": "列のリセット",
+    "expandAll": "すべて展開",
+    "collapseAll": "すべて折りたたむ",
+    "copy": "コピー",
+    "ctrlC": "Ctrl+C",
+    "copyWithHeaders": "ヘッダー付きでコピー",
+    "copyWithGroupHeaders": "グループヘッダー付きでコピー",
+    "paste": "貼り付け",
+    "ctrlV": "Ctrl+V",
+    "export": "エクスポート",
+    "csvExport": "CSVエクスポート",
+    "excelExport": "Excelエクスポート",
+
+    # Enterprise Menu Aggregation and Status Bar
+    "sum": "合計",
+    "min": "最小",
+    "max": "最大",
+    "none": "なし",
+    "count": "カウント",
+    "avg": "平均",
+    "filteredRows": "フィルター済み",
+    "selectedRows": "選択済み",
+    "totalRows": "総行数",
+    "totalAndFilteredRows": "行",
+    "more": "詳細",
+    "to": "-",
+    "of": "/",
+    "page": "ページ",
+    "nextPage": "次のページ",
+    "lastPage": "最後のページ",
+    "firstPage": "最初のページ",
+    "previousPage": "前のページ",
+}
+
+
+# ---------------------------------------------------------------------------
+# CSS Hacks for File Uploader Localization
+# ---------------------------------------------------------------------------
+FILE_UPLOADER_CSS = """
+<style>
+/* ── File Uploader: hide original English text ── */
+[data-testid="stFileUploaderDropzoneInstructions"] > div > span {
+    display: none;
+}
+
+/* ── Inject Japanese drag-and-drop instruction ── */
+[data-testid="stFileUploaderDropzoneInstructions"] > div::before {
+    content: "ここにドラッグ＆ドロップ";
+    font-size: 0.875rem;
+    display: block;
+    margin-bottom: 4px;
+    color: inherit;
+}
+
+/* ── Inject Japanese limit text ── */
+[data-testid="stFileUploaderDropzoneInstructions"] > div::after {
+    content: "制限 200MB • CSV, XLSX";
+    font-size: 0.75rem;
+    display: block;
+    color: rgba(49, 51, 63, 0.6);
+}
+
+/* ── Button: hide original English text, inject Japanese ── */
+[data-testid="stFileUploaderDropzone"] button {
+    position: relative;
+    color: transparent !important;
+    min-width: 0 !important;
+    padding: 0.375rem 1rem !important;
+}
+
+[data-testid="stFileUploaderDropzone"] button > * {
+    visibility: hidden;
+}
+
+[data-testid="stFileUploaderDropzone"] button::after {
+    content: "ファイルを選択";
+    font-size: 0.875rem;
+    color: #31333F;
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    pointer-events: none;
+    white-space: nowrap;
+    visibility: visible;
+}
+
+/* ── Dark mode adjustments ── */
+[data-testid="stApp"][data-theme="dark"]
+    [data-testid="stFileUploaderDropzoneInstructions"] > div::after {
+    color: rgba(250, 250, 250, 0.5);
+}
+
+[data-testid="stApp"][data-theme="dark"]
+    [data-testid="stFileUploaderDropzone"] button::after {
+    color: #fafafa;
+}
+
+@media (prefers-color-scheme: dark) {
+    [data-testid="stFileUploaderDropzoneInstructions"] > div::after {
+        color: rgba(250, 250, 250, 0.5);
+    }
+    [data-testid="stFileUploaderDropzone"] button::after {
+        color: #fafafa;
+    }
+}
+</style>
+"""
