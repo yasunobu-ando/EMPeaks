@@ -1,1 +1,16 @@
 .DS_Store
+# Python 仮想環境 (uv / venv)
+.venv/
+venv/
+ENV/
+
+# Python キャッシュファイル
+**/__pycache__/
+*.py[cod]
+*$py.class
+
+# uv 関連（通常、uv.lock は Git に含めますが、python-version は共有しない場合があります）
+.python-version
+
+# エディタ設定 (Antigravity / VS Code)
+.vscode/

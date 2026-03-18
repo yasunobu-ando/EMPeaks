@@ -110,7 +110,7 @@ def fitting_board_constructor(db, param):
         if st.session_state['Fitted'] and mi is not None:
             tmp_db2 = x_data.to_frame()
             if check_plot['Mixture Model']:
-                y_model = pd.Series(mi.predict(x.values) * mi.N_tot, name='mixture_model', index=x_data.index)
+                y_model = pd.Series(mi.predict(x_data.values) * mi.N_tot, name='mixture_model', index=x_data.index)
                 fitting_summary['Mixture Model'] = y_model.tolist()
                 tmp_db2 = pd.concat([tmp_db2, y_model], axis=1)
                 chart = chart + alt.Chart(tmp_db2).mark_line(
@@ -123,7 +123,7 @@ def fitting_board_constructor(db, param):
             for k in range(K):
                 if check_plot['Peaks'][k]:
                     flag = True
-                    y_peak = pd.Series(mi.model[k].predict(x.values) * mi.pi[k] * mi.N_tot,
+                    y_peak = pd.Series(mi.model[k].predict(x_data.values) * mi.pi[k] * mi.N_tot,
                                        name=f"Peak_#{k}")
                     fitting_summary[f'Peak #{k:02d}'] = y_peak.tolist()
                     tmp_peaks = pd.concat([tmp_peaks, y_peak], axis=1)
@@ -139,7 +139,7 @@ def fitting_board_constructor(db, param):
 
             # Background model
             if check_plot['Background Model'] and len(mi.model) > K:
-                y_bg = pd.Series(mi.model[-1].predict(x.values) * mi.pi[-1] * mi.N_tot,
+                y_bg = pd.Series(mi.model[-1].predict(x_data.values) * mi.pi[-1] * mi.N_tot,
                                  name=f"BG: {st.session_state['BackgroundModel']}")
                 fitting_summary[f"BG: {st.session_state['BackgroundModel']}"] = y_bg.tolist()
 
