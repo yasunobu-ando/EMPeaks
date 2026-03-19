@@ -123,4 +123,5 @@ def _wrap_single_run_info(run_info):
 def refresh():
     """状態をリフレッシュ"""
     st.session_state['Fitted'] = False
+    st.session_state['FitInfo'] = None
     st.cache_data.clear()
