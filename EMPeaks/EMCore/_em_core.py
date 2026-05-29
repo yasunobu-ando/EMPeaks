@@ -2,7 +2,14 @@
 # Copyright © 2023 National Institute of Advanced Industrial Science and Technology (AIST)
 # Author: Yasunobu ANDO
 
+import logging
+from typing import Dict, List, Optional, Union, Any
+
 from EMPeaks.EMCore._gaussian import Gaussian
+from EMPeaks.EMCore.exceptions import BackgroundTypeError, ParameterError
+from EMPeaks.EMCore.background_factory import BackgroundFactory
+from EMPeaks.EMCore.visualizer import Visualizer
+from EMPeaks.EMCore.fitting_engine import FittingEngine
 from EMPeaks.Background import UniformModel, SquareRootModel, LinearModel, TriangleModel, RampModel
 from scipy import integrate
 from scipy import optimize
@@ -11,8 +18,18 @@ import matplotlib.pyplot as plt
 import copy
 import time
 
+# Module logger
+logger = logging.getLogger(__name__)
+
 
 class EMCore:
+    # Class constants
+    INITIAL_BACKGROUND_WEIGHT = 1.0e-4
+    EPSILON_LOG = 1e-200
+    EPSILON_PREDICT = 1e-20
+    DEFAULT_MAX_ITER = 3000
+    DEFAULT_R_EPS = 1e-9
+
     def __init__(self, K=2, x_min=-300, x_max=300, sigma_min=0.1, sigma_max=50,
                  background='none', k_ramp=5):
         self.K = K
@@ -22,49 +39,36 @@ class EMCore:
         self.sigma_max = sigma_max
         self.background = background
         self.dx = 1.0
+        self.k_ramp = k_ramp  # Store k_ramp for ramp_sum
+        
+        # Initialize BackgroundFactory for delegation
+        self._bg_factory = BackgroundFactory(x_min, x_max, k_ramp)
 
         self.model = [Gaussian(x_min, x_max, sigma_min, sigma_max) for k in range(self.K)]
         self.pi = np.ones(self.K) / self.K
 
-        if self.background == 'none':
-            self.K_all = K
-        elif self.background == 'uniform':
-            self.K_all = K + 1
-            self.pi = np.append(self.pi, 1.0e-4)
-            self.pi = self.pi / np.sum(self.pi)
-            self.model.append(UniformModel(self.x_min, self.x_max))
-        elif self.background == 'squareroot':
-            self.K_all = K + 1
-            self.pi = np.append(self.pi, 1.0e-4)
-            self.pi = self.pi / np.sum(self.pi)
-            self.model.append(SquareRootModel(self.x_min, self.x_max))
-        elif self.background == 'linear':
-            self.K_all = K + 1
-            self.pi = np.append(self.pi, 1.0e-4)
-            self.pi = self.pi / np.sum(self.pi)
-            self.model.append(LinearModel(self.x_min, self.x_max))
-        elif self.background == 'ramp_sum':
+        # Initialize background models using factory method
+        if self.background == 'ramp_sum':
             print("RampSum Background is set.")
-            self.k_ramp = k_ramp
-            self.K_all = K + self.k_ramp + 2
             self.ramp_node = np.linspace(self.x_min, self.x_max, self.k_ramp + 1, endpoint=False)
-            self.pi = np.append(self.pi, np.random.rand(self.k_ramp + 2))
-            self.pi = self.pi / np.sum(self.pi)
-            self.model.append(UniformModel(self.x_min, self.x_max))
-            for k in range(k_ramp):
-                 self.model.append(RampModel(self.ramp_node[k], self.ramp_node[k + 1], self.x_max))
-            self.model.append(TriangleModel(self.ramp_node[-1], self.x_max))
-        #elif self.background == 'sharley':
-        #    print("Sharley Background is set.")
-        #    self.K_all = K + 2
-        #    self.pi = np.append(self.pi, 1.0e-4)
-        #    self.pi = np.append(self.pi, 1.0e-4)
-        #    self.pi = self.pi / np.sum(self.pi)
-        #    self.model.append(UniformModel(self.x_min, self.x_max))
-        #    self.model.append(Sharley(self.K, self.x_min, self.x_max))
-        #    self.model[-1].peak_model.model = self.model[0:K]
+            background_models = self._bg_factory.create(self.background)
+            self.K_all = K + len(background_models)
+            self._update_mixture_weights(len(background_models), use_random=True)
+        elif self.background == 'none':
+            self.K_all = K
+        elif self.background in ('uniform', 'squareroot', 'linear'):
+            background_models = self._bg_factory.create(self.background)
+            self.K_all = K + len(background_models)
+            self._update_mixture_weights(len(background_models))
+            self.model.extend(background_models)
         else:
             print("Setting Background is not implemented.")
+            self.K_all = K
+
+        # Add ramp_sum models after weight update
+        if self.background == 'ramp_sum':
+            self.model.extend(background_models)
+
         self.N_tot = 1.0
         self.N = self.pi * self.N_tot
         self.Dirichlet_alpha = np.ones(self.K_all)
@@ -121,36 +125,17 @@ class EMCore:
         """
         if self.background == 'none':
             self.K_all = self.K
-
-        elif self.background == 'uniform':
-            self.K_all = self.K + 1
-            self.model.append(UniformModel(self.x_min, self.x_max))
-        elif self.background == 'squareroot':
-            self.K_all = self.K + 1
-            self.model.append(SquareRootModel(self.x_min, self.x_max))
-
-        elif self.background == 'linear':
-            self.K_all = self.K + 1
-            if ('s_tri' in param) and (0 <= param['s_tri'] <= 1.0):
-                self.model.append(LinearModel(self.x_min, self.x_max, s_tri=param['s_tri']))
-            else:
-                self.model.append(LinearModel(self.x_min, self.x_max))
-
         elif self.background == 'ramp_sum':
             self.K_all = self.K + self.k_ramp + 2
             self.ramp_node = np.linspace(self.x_min, self.x_max, self.k_ramp + 1, endpoint=False)
-            # self.pi = np.append(self.pi, np.random.rand(self.k_ramp + 2))
-            # self.pi = self.pi / np.sum(self.pi)
-            self.model.append(UniformModel(self.x_min, self.x_max))
-            for k in range(self.k_ramp):
-                self.model.append(RampModel(self.ramp_node[k], self.ramp_node[k + 1], self.x_max))
-            self.model.append(TriangleModel(self.ramp_node[-1], self.x_max))
-
-        # elif self.background == 'sharley':
-        #     self.K_all = self.K + 2
-        #     self.model.append(UniformModel(self.x_min, self.x_max))
-        #     self.model.append(Sharley(self.K, self.x_min, self.x_max))
-        #     self.model[-1].peak_model.model = self.model[0:self.K]
+            background_models = self._bg_factory.create(self.background)
+            self.model.extend(background_models)
+        elif self.background in ('uniform', 'squareroot', 'linear'):
+            self.K_all = self.K + 1
+            # Pass s_tri if provided for linear background
+            s_tri = param.get('s_tri', None)
+            background_models = self._bg_factory.create(self.background, s_tri=s_tri)
+            self.model.extend(background_models)
 
     def extract_single_params(self, param_set, **param):
         org_K = self.K
@@ -211,6 +196,22 @@ class EMCore:
 
         return _tmp_param, _tmp_index
 
+    def _update_mixture_weights(self, n_background_models, use_random=False):
+        """背景モデル追加時に混合重みを更新
+        
+        Args:
+            n_background_models: 追加する背景モデルの数
+            use_random: Trueならランダム初期化、Falseなら定数初期化
+        """
+        if n_background_models == 0:
+            return
+        if use_random:
+            new_weights = np.random.rand(n_background_models)
+        else:
+            new_weights = np.full(n_background_models, self.INITIAL_BACKGROUND_WEIGHT)
+        self.pi = np.append(self.pi, new_weights)
+        self.pi = self.pi / np.sum(self.pi)
+
     def init_param_uniform(self):
         self.pi = np.random.rand(self.K_all)
         self.pi = self.pi / self.pi.sum()
@@ -221,7 +222,7 @@ class EMCore:
         return np.sum([self.pi[k] * self.model[k].predict(x) for k in range(self.K_all)], axis=0)
 
     def log_likelihood(self, x, intensity):
-        return np.sum(intensity * np.log(self.predict(x) + 1e-200))
+        return np.sum(intensity * np.log(self.predict(x) + self.EPSILON_LOG))
 
     def fit(self, x, intensity, method='adapted_em', max_iter=3000, r_eps=1e-9,
             stdout=True, trial=10, criteria='likelihood'):
@@ -229,20 +230,18 @@ class EMCore:
 
         self.x_min = np.min(x)
         self.x_max = np.max(x)
-        if self.background == "uniform":
-            self.model[-1] = UniformModel(self.x_min, self.x_max)
-        if self.background == "squareroot":
-            self.model[-1] = SquareRootModel(self.x_min, self.x_max)
-        if self.background == "linear":
-            self.model[-1] = LinearModel(self.x_min, self.x_max)
+        
+        # Recreate background model with updated x_min/x_max
+        if self.background in ('uniform', 'squareroot', 'linear'):
+            self._bg_factory.update_range(self.x_min, self.x_max)
+            self.model[-1] = self._bg_factory.create(self.background)[0]
         elif self.background == 'ramp_sum':
-            self.model.append(UniformModel(self.x_min, self.x_max))
-            for k in range(self.k_ramp):
-                self.model.append(RampModel(self.ramp_node[k], self.ramp_node[k + 1], self.x_max))
-            self.model.append(TriangleModel(self.ramp_node[-1], self.x_max))
-        # elif self.background == 'sharley':
-        #     self.model.append(UniformModel(self.x_min, self.x_max))
-        #     self.model.append(Sharley(self.K, self.x_min, self.x_max))
+            # For ramp_sum, replace the background models (last k_ramp+2 models)
+            n_bg = self.k_ramp + 2
+            self.model = self.model[:self.K]  # Keep only peak models
+            self._bg_factory.update_range(self.x_min, self.x_max)
+            background_models = self._bg_factory.create(self.background)
+            self.model.extend(background_models)
 
         if method == 'leastsq':
             print("**** Start spectrum fitting via Least-Square algorithm ****")
@@ -476,7 +475,7 @@ class EMCore:
         return
 
     def e_step(self, x):
-        eps = 1e-20
+        eps = self.EPSILON_PREDICT
         self._gamma = np.array([self.pi[k] * self.model[k].predict(x)
                                 / (self.predict(x) + eps) for k in range(self.K_all)])
         return
@@ -622,39 +621,6 @@ class EMCore:
             print("   Warning: non-linear least-square optimization is failed.")
 
         return run_info
-
-    def plot(self, x_data, intensity):
-        self.dx=x_data[1]-x_data[0]
-        figsize = (8, 3)
-        fig = plt.figure(figsize=figsize)
-        x = np.arange(self.x_min, self.x_max, self.dx)
-
-        ax = fig.add_subplot(1, 1, 1)
-        if self.background == 'none':
-            for k in range(self.K):
-                ax.plot(x, self.model[k].predict(x) * self.N[k], label='model_' + str(k))
-        elif self.background == 'sharley':
-            for k in range(self.K):
-                ax.plot(x, self.model[k].predict(x) * self.N[k], label='model_' + str(k))
-            y = self.model[-1].predict(x) * self.N[-1] + self.model[-2].predict(x) * self.N[-2]
-            ax.plot(x, y, label=self.background)
-        elif self.background == 'ramp_sum':
-            for k in range(self.K):
-                ax.plot(x, self.model[k].predict(x) * self.N[k], label='model_' + str(k))
-            y = np.sum([self.model[self.K+k].predict(x) * self.N[self.K+k] for k in range(self.k_ramp+2)], axis=0)
-            ax.plot(x, y, label=self.background)
-        else:
-            for k in range(self.K):
-                ax.plot(x, self.model[k].predict(x) * self.N[k], label='model_' + str(k))
-            ax.plot(x, self.model[-1].predict(x) * self.N[-1], label=self.background)
-
-        ax.plot(x, self.predict(x) * self.N_tot, 'black', linewidth=3, ls='--', label='full_model')
-        ax.scatter(x_data, intensity, label='data')
-        ax.set_xlabel('Energy [eV]')
-        ax.set_ylabel('Intensity')
-        ax.legend()
-        plt.show()
-        return
 
 
 # class Sharley():
