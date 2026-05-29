@@ -40,13 +40,6 @@ def fitting_board_constructor(db, param):
 
         # Buttons
         if chart_col[0].button(t("start_optimization")):
-            st.session_state['Fitted'] = True
-        if chart_col[0].button(t("refresh")):
-            refresh()
-            st.rerun()
-
-        # Run fitting
-        if st.session_state['Fitted'] and st.session_state['ModelInstance'] is not None:
             with st.spinner(t("fitting_spinner")):
                 st.session_state['ModelInstance'], info = run(
                     st.session_state['ModelInstance'],
@@ -54,7 +47,15 @@ def fitting_board_constructor(db, param):
                     db[data_column[1]],
                     st.session_state['TrialFrequency']
                 )
+            st.session_state['Fitted'] = True
+            st.session_state['FitInfo'] = info
+        if chart_col[0].button(t("refresh")):
+            refresh()
+            st.rerun()
 
+        # Display fitting results
+        if st.session_state['Fitted'] and st.session_state.get('FitInfo') is not None:
+            info = st.session_state['FitInfo']
             ref_id = info['index_best']
 
             # Metrics row

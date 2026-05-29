@@ -132,10 +132,10 @@ def _get_model_param_info():
     elif model_type == 'LorentzianMixture':
         return {'x0': t('peak_position'), 'gamma': t('hwhm'), 'pi': t('mixing_ratio')}
     elif model_type == 'PseudoVoigtMixture':
-        return {'mu': t('peak_position'), 'sigma': t('standard_deviation'), 'eta': t('mixing_parameter'),
+        return {'x0': t('peak_position'), 'gamma': t('hwhm'), 'eta': t('mixing_parameter'),
                 'pi': t('mixing_ratio')}
     elif model_type == 'DoniachSunjicMixture':
-        return {'mu': t('peak_position'), 'sigma': t('standard_deviation'), 'alpha': t('asymmetry_parameter'),
+        return {'x0': t('peak_position'), 'gamma': t('hwhm'), 'alpha': t('asymmetry_parameter'),
                 'pi': t('mixing_ratio')}
     elif model_type == 'TSDCMixture':
         return {'Ea': t('tsdc_ea'), 'Tp': t('tsdc_tp'), 'tau0': t('tsdc_tau0'), 'pi': t('mixing_ratio')}
