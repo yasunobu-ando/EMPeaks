@@ -1,1 +1,24 @@
+# OS generated files
 .DS_Store
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+
+# Environments
+.venv/
+venv/
+ENV/
+env/
+
+# IDEs
+.idea/
+.vscode/
+
+# CSV outputs (Exclude test data)
+*.csv
+!OHA_1.csv
+!OHA_2.csv
