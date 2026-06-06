@@ -29,9 +29,12 @@ class DoniachSunjicMixtureModel(EMCore):
         self.model[0:K] = [DoniachSunjic(x_min, x_max, gamma_min, gamma_max, alpha_min, alpha_max)
                            for k in range(self.K)]
 
+    _BG_TYPE_MAP = {"none": 0, "uniform": 1, "squareroot": 2, "linear": 3}
+    _BG_RUST_SUPPORTED = {"none", "uniform", "squareroot", "linear"}
+
     def adapted_em(self, x, intensity, max_iter, r_eps, stdout):
         from EMPeaks.EMCore._backend import get_backend
-        if get_backend() == "rust" and self.background == "none":
+        if get_backend() == "rust" and self.background in self._BG_RUST_SUPPORTED:
             return self._adapted_em_rust_ds(x, intensity, max_iter, r_eps, stdout)
         return self._adapted_em_python(x, intensity, max_iter, r_eps, stdout)
 
@@ -40,67 +43,53 @@ class DoniachSunjicMixtureModel(EMCore):
         import time
 
         start = time.time()
-        print("<< Start fitting via Adapted EM Algorithm. [Rust backend / DoniachSunjic] >>")
+        print("<< Start fitting via Adapted EM Algorithm. [Rust backend / DoniachSunjic Phase 3] >>")
 
-        ll_0 = self.log_likelihood(x, intensity)
-        ll_hist = [ll_0]
-        res_hist = [0.0]
-        total_iter = max_iter
-        t_tot = 0.0
-        ll = ll_0
-        residual = 0.0
+        x_f64 = np.ascontiguousarray(x, dtype=np.float64)
+        int_f64 = np.ascontiguousarray(intensity, dtype=np.float64)
 
-        x_f64 = x.astype(np.float64)
+        m0 = self.model[0]
+        x0_arr = np.array([self.model[k].x0 for k in range(self.K)], dtype=np.float64)
+        gamma_arr = np.array([self.model[k].gamma for k in range(self.K)], dtype=np.float64)
+        alpha_arr = np.array([self.model[k].alpha for k in range(self.K)], dtype=np.float64)
+        pi_arr = np.array(self.pi[:self.K_all], dtype=np.float64)
+        da_arr = np.ascontiguousarray(self.Dirichlet_alpha[:self.K_all], dtype=np.float64)
 
-        for it in range(max_iter):
-            self.e_step(x)
+        bg_type = self._BG_TYPE_MAP.get(self.background, 0)
+        s_tri_in = float(self.model[-1].s_tri) if self.background == "linear" else 0.0
 
-            N_k = np.array([np.sum(intensity * self._gamma[k]) for k in range(self.K_all)])
-            self.pi = (N_k + self.Dirichlet_alpha - 1) / np.sum(N_k + self.Dirichlet_alpha - 1)
-            self.pi[self.pi < 0] = 0.0
-            self.pi = self.pi / np.sum(self.pi)
+        total_iter, ll_hist_np, res_hist_np, s_tri_out = empeaks_rust_core.run_ds_em_loop(
+            x_f64, int_f64,
+            x0_arr, gamma_arr, alpha_arr, pi_arr,
+            da_arr,
+            self.x_min, self.x_max,
+            m0.gamma_min, m0.gamma_max,
+            m0.alpha_min, m0.alpha_max,
+            max_iter, r_eps,
+            bg_type, s_tri_in,
+        )
 
-            for k in range(self.K):
-                w = (intensity * self._gamma[k]).astype(np.float64)
-                if np.sum(w) == 0:
-                    continue
-                m = self.model[k]
-                x0_new, gamma_new, alpha_new = empeaks_rust_core.doniach_sunjic_mle(
-                    x_f64, w,
-                    m.x0, m.gamma, m.alpha,
-                    m.x_min, m.x_max,
-                    m.gamma_min, m.gamma_max,
-                    m.alpha_min, m.alpha_max,
-                )
-                self.model[k].x0 = x0_new
-                self.model[k].gamma = gamma_new
-                self.model[k].alpha = alpha_new
+        for k in range(self.K):
+            self.model[k].x0 = float(x0_arr[k])
+            self.model[k].gamma = float(gamma_arr[k])
+            self.model[k].alpha = float(alpha_arr[k])
+        self.pi[:self.K_all] = pi_arr
+        if self.background == "linear":
+            self.model[-1].s_tri = s_tri_out
+            self.model[-1].s_uni = 1.0 - s_tri_out
 
-            ll = self.log_likelihood(x, intensity)
-            residual = (ll - ll_0) / np.abs(ll_0)
-            ll_hist.append(ll)
-            res_hist.append(residual)
+        ll_hist = list(ll_hist_np)
+        res_hist = list(res_hist_np)
+        ll = ll_hist[-1]
+        residual = res_hist[-1] if len(res_hist) > 1 else 0.0
+        t_tot = time.time() - start
 
-            if stdout and it % 10 == 0:
-                t2 = time.time()
-                print("> iteration #{:3d}, LL={:10.8e}, residual={:4.3e}, elapsed time: {:5.2f} s"
-                      .format(it, ll, residual, t2 - start))
-
-            if residual < 0.0:
-                print("Warning!!!! residual is negative!!!  Parameters are initialized again.")
-                self.init_param_uniform()
-            elif residual < r_eps:
-                t_tot = time.time() - start
-                total_iter = it + 1
-                print('Convergence is achieved at iter. {:3d}, elapsed time {:5.2f} s'
-                      .format(it, t_tot))
-                print('   LogLikelihood:     {:12.8e}\n        residual:      {:12.8e}'
-                      .format(ll, residual))
-                break
-
-            ll_0 = ll
+        if total_iter < max_iter:
+            print('Convergence is achieved at iter. {:3d}, elapsed time {:5.2f} s'
+                  .format(total_iter, t_tot))
+            print('   LogLikelihood:     {:12.8e}\n        residual:      {:12.8e}'
+                  .format(ll, residual))
         else:
-            t_tot = time.time() - start
             print('>>> Convergence is not achieved within {:3d} iterations, elapsed time: {:5.2f} s'
                   .format(max_iter, t_tot))
             print('   LogLikelihood:      {:12.8e}\n        residual:       {:12.8e}'

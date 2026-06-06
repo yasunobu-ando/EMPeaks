@@ -20,18 +20,30 @@ fn ds_unnorm(xi: f64, x0: f64, gamma: f64, alpha: f64) -> f64 {
     angle.cos() / denom
 }
 
-// Normalized DS PDF: matches Python DoniachSunjic.predict(x)
-fn predict_ds(x: &[f64], x0: f64, gamma: f64, alpha: f64) -> Vec<f64> {
-    let unnorm: Vec<f64> = x.iter().map(|&xi| ds_unnorm(xi, x0, gamma, alpha)).collect();
-    let z = trapezoid(&unnorm, x);
-    if z.abs() < 1e-300 {
-        return vec![0.0; x.len()];
+pub fn predict_inplace(x: &[f64], x0: f64, gamma: f64, alpha: f64, out: &mut [f64]) {
+    for i in 0..x.len() {
+        out[i] = ds_unnorm(x[i], x0, gamma, alpha);
     }
-    unnorm.iter().map(|&p| p / z).collect()
+    let z = trapezoid(out, x);
+    if z.abs() < 1e-300 {
+        for i in 0..x.len() {
+            out[i] = 0.0;
+        }
+        return;
+    }
+    for i in 0..x.len() {
+        out[i] /= z;
+    }
+}
+
+pub fn predict(x: &[f64], x0: f64, gamma: f64, alpha: f64) -> Vec<f64> {
+    let mut out = vec![0.0; x.len()];
+    predict_inplace(x, x0, gamma, alpha, &mut out);
+    out
 }
 
 fn ll_ds(x: &[f64], intensity: &[f64], x0: f64, gamma: f64, alpha: f64) -> f64 {
-    let pred = predict_ds(x, x0, gamma, alpha);
+    let pred = predict(x, x0, gamma, alpha);
     intensity
         .iter()
         .zip(pred.iter())

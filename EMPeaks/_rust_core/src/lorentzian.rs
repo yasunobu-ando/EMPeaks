@@ -20,19 +20,26 @@ fn lorentz_z(x0: f64, gamma: f64, x_min: f64, x_max: f64) -> f64 {
 // Double-normalized PDF: matches Python Lorentzian.predict(x)
 //   prob = 1/(pi*Z) * gamma/((x-x0)^2 + (gamma/2)^2)
 //   return prob / trapezoid(prob, x)
-fn predict_lo(x: &[f64], x0: f64, gamma: f64, x_min: f64, x_max: f64) -> Vec<f64> {
+pub fn predict_inplace(x: &[f64], x0: f64, gamma: f64, x_min: f64, x_max: f64, out: &mut [f64]) {
     let hg = gamma / 2.0;
     let z = lorentz_z(x0, gamma, x_min, x_max).max(1e-300);
-    let unnorm: Vec<f64> = x
-        .iter()
-        .map(|&xi| gamma / (PI * z * ((xi - x0).powi(2) + hg * hg)))
-        .collect();
-    let z_num = trapezoid(&unnorm, x).max(1e-300);
-    unnorm.iter().map(|&p| p / z_num).collect()
+    for i in 0..x.len() {
+        out[i] = gamma / (PI * z * ((x[i] - x0).powi(2) + hg * hg));
+    }
+    let z_num = trapezoid(out, x).max(1e-300);
+    for i in 0..x.len() {
+        out[i] /= z_num;
+    }
+}
+
+pub fn predict(x: &[f64], x0: f64, gamma: f64, x_min: f64, x_max: f64) -> Vec<f64> {
+    let mut out = vec![0.0; x.len()];
+    predict_inplace(x, x0, gamma, x_min, x_max, &mut out);
+    out
 }
 
 fn ll_lo(x: &[f64], intensity: &[f64], x0: f64, gamma: f64, x_min: f64, x_max: f64) -> f64 {
-    let pred = predict_lo(x, x0, gamma, x_min, x_max);
+    let pred = predict(x, x0, gamma, x_min, x_max);
     intensity
         .iter()
         .zip(pred.iter())

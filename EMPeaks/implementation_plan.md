@@ -55,8 +55,12 @@ EMPeaks/
 │   └── src/
 │       ├── lib.rs            ← PyO3 モジュール登録
 │       ├── gaussian.rs       ← Gaussian predict / MLE
-│       ├── background.rs     ← 背景モデル predict（Phase 2）
-│       └── em_engine.rs      ← E-step / M-step / EMループ
+│       ├── em_engine.rs      ← E-step / M-step / EMループ（Gaussian）
+│       ├── pseudo_voigt.rs   ← PseudoVoigt predict / MLE
+│       ├── lorentzian.rs     ← Lorentzian predict / MLE
+│       ├── doniach_sunjic.rs ← DoniachSunjic predict / MLE
+│       ├── tsdc.rs           ← TSDC predict / MLE
+│       └── background.rs     ← 背景モデル predict（Phase 4）
 ├── EMCore/
 │   ├── _em_core.py           ← [MODIFY] Rust/Python 分岐を追加
 │   ├── _gaussian.py          ← [既存・変更なし]
@@ -328,18 +332,31 @@ fn run_em_loop<'py>(
     dirichlet_alpha: PyReadonlyArray1<'py, f64>,
     max_iter: usize,
     r_eps: f64,
-) -> PyResult<(usize, Vec<f64>, Vec<f64>)> {
-    let x = x.as_array().to_owned();
-    let intensity = intensity.as_array().to_owned();
-    let mut mu = mu.as_array_mut();
-    let mut sigma = sigma.as_array_mut();
-    let mut pi = pi.as_array_mut();
-    let da = dirichlet_alpha.as_array().to_owned();
+) -> PyResult<(usize, PyObject, PyObject)> {
+    let x_arr   = x.as_array();
+    let int_arr = intensity.as_array();
+    let da      = dirichlet_alpha.as_array();
 
-    let (total_iter, ll_hist, res_hist) =
-        em_engine::run_em_loop(&x, &intensity, &mut mu, &mut sigma, &mut pi, &da, max_iter, r_eps);
+    let mut mu_vec:    Vec<f64> = mu.as_array().to_vec();
+    let mut sigma_vec: Vec<f64> = sigma.as_array().to_vec();
+    let mut pi_vec:    Vec<f64> = pi.as_array().to_vec();
+    let da_slice:      Vec<f64> = da.to_vec();
 
-    Ok((total_iter, ll_hist, res_hist))
+    let (total_iter, ll_hist, res_hist) = em_engine::run_em_loop(
+        x_arr, int_arr,
+        &mut mu_vec, &mut sigma_vec, &mut pi_vec,
+        &da_slice, max_iter, r_eps,
+    );
+
+    // 更新値を Python 側配列に書き戻す
+    mu.as_array_mut().iter_mut().zip(mu_vec.iter()).for_each(|(d, &s)| *d = s);
+    sigma.as_array_mut().iter_mut().zip(sigma_vec.iter()).for_each(|(d, &s)| *d = s);
+    pi.as_array_mut().iter_mut().zip(pi_vec.iter()).for_each(|(d, &s)| *d = s);
+
+    let ll_py  = Array1::from_vec(ll_hist).into_pyarray_bound(py).into();
+    let res_py = Array1::from_vec(res_hist).into_pyarray_bound(py).into();
+
+    Ok((total_iter, ll_py, res_py))
 }
 
 #[pymodule]
@@ -358,7 +375,7 @@ fn empeaks_rust_core(m: &Bound<'_, PyModule>) -> PyResult<()> {
 from EMPeaks.EMCore._backend import get_backend
 
 def adapted_em(self, x, intensity, max_iter, r_eps, stdout):
-    if get_backend() == "rust" and self.background == "none":
+    if get_backend() == "rust" and self.background == "none" and type(self).__name__ == "GaussianMixtureModel":
         return self._adapted_em_rust(x, intensity, max_iter, r_eps, stdout)
     return self._adapted_em_python(x, intensity, max_iter, r_eps, stdout)
 
@@ -366,32 +383,39 @@ def _adapted_em_rust(self, x, intensity, max_iter, r_eps, stdout):
     import empeaks_rust_core
     import numpy as np
 
-    mu = np.array([m.mu for m in self.model[:self.K]])
-    sigma = np.array([m.sigma for m in self.model[:self.K]])
-    pi = self.pi.copy()
-    da = self.Dirichlet_alpha.copy()
+    start = time.time()
+    mu    = np.array([self.model[k].mu    for k in range(self.K)], dtype=np.float64)
+    sigma = np.array([self.model[k].sigma for k in range(self.K)], dtype=np.float64)
+    pi    = self.pi.astype(np.float64).copy()
+    da    = self.Dirichlet_alpha.astype(np.float64).copy()
 
     total_iter, ll_hist, res_hist = empeaks_rust_core.run_em_loop(
-        x, intensity, mu, sigma, pi, da, max_iter, r_eps
+        x.astype(np.float64), intensity.astype(np.float64),
+        mu, sigma, pi, da, max_iter, r_eps,
     )
-    # パラメータを Python 側に反映
+
+    # パラメータを Python 側モデルに反映
     for k in range(self.K):
-        self.model[k].mu = mu[k]
+        self.model[k].mu    = mu[k]
         self.model[k].sigma = sigma[k]
     self.pi = pi
 
+    t_tot    = time.time() - start
+    ll       = float(ll_hist[-1])   if len(ll_hist)   > 0 else float('nan')
+    residual = float(res_hist[-1])  if len(res_hist)  > 0 else float('nan')
+
     # leastsq_for_normalization_factor は Python 側で処理
-    rmse = self.leastsq_for_normalization_factor(x, intensity, stdout)
+    rmse  = self.leastsq_for_normalization_factor(x, intensity, stdout)
     param = self.export_param()
     run_info = {
-        'total_iter': total_iter,
-        'total_time': float(total_iter),  # Rust 側でも計測予定
-        'time/iter': 0.0,
-        'LL': ll_hist[-1] if ll_hist else float('nan'),
-        'LL_hist': ll_hist,
-        'LL_residual': res_hist[-1] if res_hist else float('nan'),
-        'LL_residual_hist': res_hist,
-        'RMSE': rmse
+        'total_iter':        total_iter,
+        'total_time':        t_tot,
+        'time/iter':         t_tot / max(total_iter, 1),
+        'LL':                ll,
+        'LL_hist':           list(ll_hist),
+        'LL_residual':       residual,
+        'LL_residual_hist':  list(res_hist),
+        'RMSE':              rmse,
     }
     return run_info
 
@@ -535,16 +559,17 @@ _rust_core/src/
 ├── em_engine.rs      ← [既存・変更なし]
 ├── pseudo_voigt.rs   ← [NEW] ① 最初に実装
 ├── lorentzian.rs     ← [NEW] ② 次に実装
-├── doniach_sunjic.rs ← [NEW] ③ 最後に実装
-└── background.rs     ← [NEW] Phase 2 完了後
+├── doniach_sunjic.rs ← [NEW] ③ 次に実装
+└── tsdc.rs           ← [NEW] ④ 最後に実装
 ```
 
 ### 追加 Cargo 依存
 
 ```toml
 [dependencies]
-lbfgsb = "0.3"   # scipy と同一 Fortran L-BFGS-B v3.0 ラッパー
+lbfgsb = "0.1"   # scipy と同一 Fortran L-BFGS-B v3.0 ラッパー
 rayon  = "1.10"  # PseudoVoigt eta グリッドサーチの並列化
+xsf    = "0.5.1" # TSDC 特殊関数（expn, expi）
 ```
 
 ---
@@ -691,50 +716,55 @@ pub fn mle_conditional_max(
 // full_optimization: L-BFGS-B (x0, gamma) + rayon 並列 eta グリッドサーチ
 // -----------------------------------------------------------------------
 
-/// MLE via L-BFGS-B（Python の full_optimization に相当）
+/// MLE via L-BFGS-B + eta グリッドサーチ（Python の full_optimization に相当）
+/// max_iter: 外側ループ上限（L-BFGS-B + eta更新を繰り返す）
+/// r_eps: 対数尤度残差の収束閾値
 pub fn mle_full_optimization(
-    x: ArrayView1<f64>, intensity: ArrayView1<f64>,
+    x: &[f64], intensity: &[f64],
     x0: &mut f64, gamma: &mut f64, eta: &mut f64,
     x_min: f64, x_max: f64, gamma_min: f64, gamma_max: f64,
-    eta_n_grid: usize,  // Python デフォルト: 100
+    max_iter: usize, r_eps: f64,
 ) {
     let x_s = x.to_vec();
     let w_s = intensity.to_vec();
-    let eta_fixed = *eta;
+    let eps_num = 1e-7_f64;
+    let mut ll_prev = ll_from_predict(&x_s, &w_s, *x0, *gamma, *eta, x_min, x_max);
 
-    let mut params = vec![*x0, *gamma];
-    let lb = vec![x_min, gamma_min];
-    let ub = vec![x_max, gamma_max];
-    lbfgsb::lbfgsb(
-        &mut params, &lb, &ub,
-        |p, g| {
-            let eps = 1e-7;
-            let ll   = log_likelihood(ArrayView1::from(&x_s), ArrayView1::from(&w_s),
-                                      p[0],       p[1],       eta_fixed, x_min, x_max);
-            let ll_dx = log_likelihood(ArrayView1::from(&x_s), ArrayView1::from(&w_s),
-                                       p[0] + eps, p[1],       eta_fixed, x_min, x_max);
-            let ll_dg = log_likelihood(ArrayView1::from(&x_s), ArrayView1::from(&w_s),
-                                       p[0],       p[1] + eps, eta_fixed, x_min, x_max);
-            g[0] = -(ll_dx - ll) / eps;
-            g[1] = -(ll_dg - ll) / eps;
-            -ll
-        },
-        1e-7, 1e-7, 100,
-    );
-    *x0 = params[0];
-    *gamma = params[1];
+    for _ in 0..max_iter {
+        let eta_fixed = *eta;
+        let bounds = vec![(x_min, x_max), (gamma_min, gamma_max)];
+        let init   = vec![*x0, *gamma];
 
-    let step = 1.0 / (eta_n_grid - 1) as f64;
-    *eta = (0..eta_n_grid)
-        .into_par_iter()
-        .map(|i| {
-            let e = (i as f64 * step).min(1.0);
-            let ll = log_likelihood(ArrayView1::from(&x_s), ArrayView1::from(&w_s),
-                                    *x0, *gamma, e, x_min, x_max);
-            (e, ll)
-        })
-        .reduce(|| (0.5, f64::NEG_INFINITY), |a, b| if b.1 > a.1 { b } else { a })
-        .0;
+        // L-BFGS-B で (x0, gamma) を最適化
+        if let Ok(state) = lbfgsb::lbfgsb(init, &bounds, |p, g| {
+            let ll   = ll_from_predict(&x_s, &w_s, p[0],           p[1],           eta_fixed, x_min, x_max);
+            let ll_x = ll_from_predict(&x_s, &w_s, p[0] + eps_num, p[1],           eta_fixed, x_min, x_max);
+            let ll_g = ll_from_predict(&x_s, &w_s, p[0],           p[1] + eps_num, eta_fixed, x_min, x_max);
+            g[0] = -(ll_x - ll) / eps_num;
+            g[1] = -(ll_g - ll) / eps_num;
+            Ok(-ll)
+        }) {
+            *x0    = state.x()[0];
+            *gamma = state.x()[1].clamp(gamma_min, gamma_max);
+        }
+
+        // eta グリッドサーチ: np.arange(0, 1.0, 0.01) = 100 値（rayon 並列）
+        *eta = (0..100usize)
+            .into_par_iter()
+            .map(|i| {
+                let e  = i as f64 * 0.01;
+                let ll = ll_from_predict(&x_s, &w_s, *x0, *gamma, e, x_min, x_max);
+                (e, ll)
+            })
+            .reduce(|| (0.5, f64::NEG_INFINITY), |a, b| if b.1 > a.1 { b } else { a })
+            .0;
+
+        let ll_new = ll_from_predict(&x_s, &w_s, *x0, *gamma, *eta, x_min, x_max);
+        if (ll_new - ll_prev) / ll_prev.abs().max(1e-300) < r_eps {
+            break;
+        }
+        ll_prev = ll_new;
+    }
 }
 ```
 
@@ -762,14 +792,14 @@ fn pseudo_voigt_predict(py, x, x0, gamma, eta, x_min, x_max) -> PyResult<PyObjec
 #[pyfunction]
 fn pseudo_voigt_mle_conditional_max(
     x, intensity, x0, gamma, eta,
-    x_min, x_max, gamma_min, gamma_max,
-    eta_lo, eta_hi, eta_step,
+    x_min, x_max,
 ) -> PyResult<(f64, f64, f64)> { ... }  // 返り値: (x0, gamma, eta)
 
 #[pyfunction]
 fn pseudo_voigt_mle_full_optimization(
     x, intensity, x0, gamma, eta,
-    x_min, x_max, gamma_min, gamma_max, eta_n_grid,
+    x_min, x_max, gamma_min, gamma_max,
+    max_iter, r_eps,
 ) -> PyResult<(f64, f64, f64)> { ... }  // 返り値: (x0, gamma, eta)
 ```
 
@@ -807,7 +837,7 @@ for backend in ['python', 'rust']:
 
 ---
 
-## Phase 2-② Lorentzian（PseudoVoigt 確認後に実施）
+## Phase 2-② Lorentzian（PseudoVoigt 確認後に実施）✅ 完了
 
 ### Python 実装の分析
 
@@ -826,7 +856,7 @@ pub fn mle(x, intensity, x0, gamma, x_min, x_max, gamma_min, gamma_max) { ... }
 
 ---
 
-## Phase 2-③ DoniachSunjic（Lorentzian 確認後に実施）
+## Phase 2-③ DoniachSunjic（Lorentzian 確認後に実施）✅ 完了
 
 ### Python 実装の分析
 
@@ -846,6 +876,81 @@ pub fn mle(x, intensity, x0, gamma, alpha, bounds) { ... }
 
 ---
 
+## Phase 2-④ TSDC（DoniachSunjic 確認後に実施）✅ 完了
+
+### Python 実装の分析
+
+**TSDC モデルの概要:**
+
+- パラメータ: `Ea`（活性化エネルギー）、`tau0`（プリエクスポーネンシャル緩和時間）、`Tp`（ピーク温度）
+- 特殊関数: `E₂(x)`（第2種指数積分 `expn(2, ...)` ）と `Ei(-x)`（指数積分 `expi(-...)`）
+  → Python では `scipy.special.expn` / `scipy.special.expi`、Rust では **`xsf` クレート**を使用
+
+**Predict 関数の構造:**
+
+```text
+predict(t) = exp(-Ea/(kB*t) - (1/(β*τ0)) * t * E₂(Ea/(kB*t))) / (β*τ0)
+```
+
+正規化 Z はトラペゾイド積分で算出。
+
+**MLE アルゴリズム（2種）:**
+
+| メソッド | 手法 | Rust 実装 |
+|---|---|---|
+| `find_root` | ∂LL/∂Ea = 0 を brentq で解き、tau0 を解析解で算出 | `mle_tsdc_find_root` |
+| `lbfgsb` | L-BFGS-B で (Ea, Tp) を最適化（tau0 は Tp から逆算） | `mle_tsdc_lbfgsb` |
+
+### 実装ファイル: `src/tsdc.rs`
+
+```rust
+// 主要公開関数
+pub fn predict_tsdc(t: &[f64], ea: f64, tau0: f64, beta: f64) -> Vec<f64> { ... }
+
+pub fn mle_tsdc_find_root(
+    t: &[f64], intensity: &[f64],
+    ea: &mut f64, tau0: &mut f64, tp: &mut f64,
+    ea_min: f64, ea_max: f64, beta: f64,
+) -> Result<(), String> { ... }
+
+pub fn mle_tsdc_lbfgsb(
+    t: &[f64], intensity: &[f64],
+    ea: &mut f64, tau0: &mut f64, tp: &mut f64,
+    ea_min: f64, ea_max: f64, t_min: f64, t_max: f64, beta: f64,
+) -> Result<(), String> { ... }
+```
+
+### PyO3 エクスポート（`lib.rs` に追加済み）
+
+```rust
+#[pyfunction]
+fn tsdc_predict(py, t, ea, tau0, beta) -> PyResult<PyObject> { ... }
+
+#[pyfunction]
+fn tsdc_mle_find_root(
+    t, intensity, ea, tau0, tp, ea_min, ea_max, beta,
+) -> PyResult<(f64, f64, f64)> { ... }  // 返り値: (ea, tau0, tp)
+
+#[pyfunction]
+fn tsdc_mle_lbfgsb(
+    t, intensity, ea, tau0, tp, ea_min, ea_max, t_min, t_max, beta,
+) -> PyResult<(f64, f64, f64)> { ... }  // 返り値: (ea, tau0, tp)
+```
+
+Python 側（`TSDCMixture/_tsdc.py`）では `get_backend() == "rust"` 時に各関数を使用。  
+`predict` / `find_root` / `lbfgsb` の三箇所で Rust バックエンドに分岐。
+
+### パリティテスト方針
+
+```python
+@pytest.mark.parametrize("method", ["find_root", "lbfgsb"])
+def test_parity_tsdc(sample_data, method):
+    """同じ初期値・同じアルゴリズム → パラメータが atol=1e-5 で一致"""
+    assert np.isclose(r_rs['LL'], r_py['LL'], atol=1e-5)
+```
+
+---
+
 ## 数値一致テスト方針まとめ
 
 | モデル | MLE アルゴリズム（Python/Rust） | パリティ基準 |
@@ -855,27 +960,363 @@ pub fn mle(x, intensity, x0, gamma, alpha, bounds) { ... }
 | PseudoVoigt `full_optimization` | L-BFGS-B（scipy）/ L-BFGS-B（lbfgsb クレート）（同一） | atol=1e-5 |
 | Lorentzian | L-BFGS-B / L-BFGS-B（同一） | atol=1e-5 |
 | DoniachSunjic | L-BFGS-B / L-BFGS-B（同一） | atol=1e-5 |
+| TSDC `find_root` | brentq（scipy）/ brentq（roots クレート）（同一） | atol=1e-5 |
+| TSDC `lbfgsb` | L-BFGS-B（scipy）/ L-BFGS-B（lbfgsb クレート）（同一） | atol=1e-5 |
 
 ---
 
-## Phase 3: sampling の並列化
+## Phase 3: Dedicated EM Engine
 
-**スコープ**: 複数 trial の Rayon 並列実行
+### 目的
 
-**追加 Cargo 依存**: なし（`rayon` は Phase 2 で導入済み）
+Python ↔ Rust 境界を EM ループ全体で吸収し、Python EM ループを完全排除する。
 
-Phase 2 で PseudoVoigt のグリッドサーチ用に導入した `rayon` を、`sampling` の trial 並列化にそのまま流用する。
+### 設計方針
+
+**禁止**: Trait ベース抽象化 / dyn dispatch / 巨大 Generic EM Engine
+
+- `em_gamma_ll.rs`: 全モデル共通の `compute_gamma_and_ll` + `update_pi`
+- `em_engine.rs`: モデル別 EM ループ関数群（既存 Gaussian ループを拡張）
+- predict は各モデルが計算し `Vec<Vec<f64>>` として渡す → **Predict Cache が自然に実現**
+
+### モジュール構成
+
+```text
+_rust_core/src/
+├── em_gamma_ll.rs   ← [NEW] compute_gamma_and_ll + update_pi（全モデル共通）
+├── em_engine.rs     ← [MODIFY] run_pv / run_lorentzian / run_ds / run_tsdc を追加
+└── lib.rs           ← [MODIFY] 新 PyO3 バインディングを追加
+```
+
+### `em_gamma_ll.rs` の実装
+
+```rust
+/// E-step（gamma）と対数尤度を1パスで計算。
+/// predictions[k][n] は呼び出し側が事前計算して渡す（predict cache）。
+pub fn compute_gamma_and_ll(
+    intensity: &[f64],
+    predictions: &[Vec<f64>],  // [k][n]
+    pi: &[f64],
+) -> (Vec<Vec<f64>>, f64) {
+    let n = predictions[0].len();
+    let k_all = pi.len();
+
+    // mixture[n] = Σk pi[k] * pred[k][n]
+    let mixture: Vec<f64> = (0..n)
+        .map(|i| (0..k_all).map(|k| pi[k] * predictions[k][i]).sum::<f64>())
+        .collect();
+
+    // gamma[k][n] = pi[k] * pred[k][n] / mixture[n]
+    let gamma: Vec<Vec<f64>> = predictions.iter().zip(pi.iter())
+        .map(|(pred, &pik)| {
+            pred.iter().zip(mixture.iter())
+                .map(|(&p, &m)| pik * p / (m + 1e-20))
+                .collect()
+        })
+        .collect();
+
+    // LL = Σn intensity[n] * log(mixture[n])
+    let ll: f64 = intensity.iter().zip(mixture.iter())
+        .map(|(&ii, &m)| ii * (m + 1e-200).ln())
+        .sum();
+
+    (gamma, ll)
+}
+
+/// pi の M-step（全モデル共通）
+pub fn update_pi(
+    pi: &mut [f64],
+    intensity: &[f64],
+    gamma: &[Vec<f64>],
+    dirichlet_alpha: &[f64],
+) {
+    let k_all = pi.len();
+    let mut n_k: Vec<f64> = (0..k_all)
+        .map(|k| intensity.iter().zip(gamma[k].iter()).map(|(&i, &g)| i * g).sum::<f64>()
+             + dirichlet_alpha[k] - 1.0)
+        .collect();
+    let n_k_sum: f64 = n_k.iter().sum();
+    n_k.iter_mut().for_each(|v| *v = (*v / n_k_sum).max(0.0));
+    let pi_sum: f64 = n_k.iter().sum();
+    pi.iter_mut().zip(n_k.iter()).for_each(|(p, &v)| *p = v / pi_sum);
+}
+```
+
+### 各モデル EM ループの構造（PseudoVoigt を例に）
+
+```rust
+// em_engine.rs に追加
+pub fn run_pv_em_loop(
+    x: &[f64],
+    intensity: &[f64],
+    x0: &mut Vec<f64>, gamma_pv: &mut Vec<f64>, eta: &mut Vec<f64>,
+    pi: &mut Vec<f64>,
+    dirichlet_alpha: &[f64],
+    use_full_opt: bool,
+    x_min: f64, x_max: f64, gamma_min: f64, gamma_max: f64,
+    max_iter: usize, r_eps: f64,
+) -> (usize, Vec<f64>, Vec<f64>) {
+    let k_all = pi.len();
+    let mut ll_0 = f64::NEG_INFINITY;
+    let mut ll_hist = vec![];
+    let mut res_hist = vec![0.0_f64];
+
+    for it in 0..max_iter {
+        // 1. Predict（モデル固有）→ predict cache として渡す
+        let predictions: Vec<Vec<f64>> = (0..k_all)
+            .map(|k| pseudo_voigt::predict(x, x0[k], gamma_pv[k], eta[k], x_min, x_max))
+            .collect();
+
+        // 2. E-step + LL（共通）
+        let (gamma, ll) = em_gamma_ll::compute_gamma_and_ll(intensity, &predictions, pi);
+
+        // 3. 収束判定
+        let residual = if ll_0.is_finite() { (ll - ll_0) / ll_0.abs() } else { f64::INFINITY };
+        ll_hist.push(ll);
+        res_hist.push(residual);
+        if residual < r_eps || residual < 0.0 { return (it + 1, ll_hist, res_hist); }
+        ll_0 = ll;
+
+        // 4. pi 更新（共通）
+        em_gamma_ll::update_pi(pi, intensity, &gamma, dirichlet_alpha);
+
+        // 5. MLE（モデル固有）
+        for k in 0..k_all {
+            let w: Vec<f64> = intensity.iter().zip(gamma[k].iter())
+                .map(|(&i, &g)| i * g).collect();
+            if use_full_opt {
+                pseudo_voigt::mle_full_optimization(
+                    x, &w, &mut x0[k], &mut gamma_pv[k], &mut eta[k],
+                    x_min, x_max, gamma_min, gamma_max, max_iter, r_eps);
+            } else {
+                pseudo_voigt::mle_conditional_max(
+                    x, &w, &mut x0[k], &mut gamma_pv[k], &mut eta[k], x_min, x_max);
+            }
+        }
+    }
+    (max_iter, ll_hist, res_hist)
+}
+```
+
+### FFI 方針（lib.rs）
+
+- `PyReadwriteArray1` を廃止
+- すべて `PyReadonlyArray1` で受け取り
+- 更新後パラメータは `Vec<f64>` で返却、Python 側で反映
+
+### 実施ステップ
+
+1. `em_gamma_ll.rs` 作成（`compute_gamma_and_ll` + `update_pi`）
+2. `em_engine.rs` に `run_pv_em_loop` 追加
+3. `lib.rs` に PyO3 バインディング追加
+4. `_pvmm.py` の `_adapted_em_rust_pv` を新 FFI に移行
+5. パリティテスト（既存テストを流用）・ベンチマーク確認
+6. Lorentzian → DoniachSunjic → TSDC を順次同様に実施
+
+### 完了条件
+
+全モデルで Python EM ループを排除し、`background == "none"` 時は Rust のみで完結。
 
 ---
 
-## 予想される高速化
+## Phase 3.5: Numerical Kernel Optimization
 
-| シナリオ | Phase 1 後 | Phase 2 後 | Phase 3 後 |
-|---|---|---|---|
-| Gaussian フィッティング | **3〜10x** | — | **10〜40x** |
-| Lorentzian フィッティング | 1x (対象外) | **2〜5x** | **8〜20x** |
-| PseudoVoigt フィッティング | 1x (対象外) | **5〜15x** | **20〜60x** |
-| DoniachSunjic フィッティング | 1x (対象外) | **3〜8x** | **12〜30x** |
+### 目的
+
+EM ループ統合後の純粋な数値カーネル最適化。
+
+### 3.5-1 ndarray依存の削減
+
+現状:
+
+```text
+Array1
+Array2
+```
+
+を大量生成している。
+
+EM の反復回数が大きい場合、アロケーションコストが無視できない。
+
+方針:
+
+```text
+Vec<f64>
+Vec<Vec<f64>>
+```
+
+中心へ移行。
+
+期待効果:
+
+- 1.1〜1.5x
+
+### 3.5-2 Predictキャッシュ
+
+> **Phase 3 で統合済み。** `compute_gamma_and_ll` に predictions を渡す設計により、
+> predict は1イテレーションあたり K 回のみ（E-step と LL で計 2K 回から削減）。
+> 追加作業不要。
+
+### 3.5-3 Rayonによる内部並列化
+
+対象:
+
+```text
+for k in 0..K
+```
+
+を並列化。
+
+特に:
+
+- PseudoVoigt
+- Doniach-Sunjic
+- TSDC
+
+で効果が期待できる。
+
+期待効果:
+
+- 1.2〜3x
+
+### Phase 3.5 完了条件
+
+- Gaussian: 8x以上
+- Lorentzian系: 5x以上
+- メモリアロケーション削減確認
+
+---
+
+## Phase 4: Backgroundモデル統合
+
+### 目的
+
+Background を Rust 側へ統合し、完全な Rust フィッティング経路を実現する。
+
+### 対象
+
+- Uniform
+- Linear
+- Triangle
+- その他既存 Background
+
+### 方針
+
+高速化案件ではなく機能対応案件として扱う。
+
+### 実施ステップ
+
+1. predict 実装
+2. M-step 統合
+3. EM エンジン統合
+4. パリティテスト
+
+### 完了条件
+
+全モデルで
+
+```python
+background != "none"
+```
+
+が Rust 実行可能。
+
+---
+
+## Phase 5: Sampling Parallelization
+
+### 目的
+
+sampling 全体を並列化しマルチコア性能を活用する。
+
+### 方針
+
+Trial単位で並列化。
+
+```rust
+(0..sampling)
+.into_par_iter()
+.map(run_em)
+```
+
+各 trial は完全独立のため同期コストが小さい。
+
+### 実施ステップ
+
+1. Rayon導入
+2. trial単位並列化
+3. ベスト結果集約
+4. 再現性テスト
+
+### 完了条件
+
+- Apple Silicon
+- Linux x86_64
+- Windows
+
+で動作確認。
+
+---
+
+## Stop Criteria
+
+Rust化そのものを目的にしない。
+
+### Phase 1
+
+Gaussian
+
+- 5x以上
+
+達成時点でリリース可能。
+
+### Phase 3
+
+Lorentzian系
+
+- 3x以上
+
+達成で実用投入可能。
+
+### Phase 3.5
+
+全主要モデル
+
+- 5〜12x
+
+達成。
+
+### Phase 5
+
+Sampling利用時
+
+- 10〜30x
+
+達成。
+
+---
+
+## 更新後ロードマップ
+
+```text
+Phase 1
+Gaussian EM Rust化
+↓
+Phase 2
+各モデルMLE Rust化
+↓
+Phase 3
+Dedicated EM Engine
+↓
+Phase 3.5
+Numerical Kernel Optimization
+↓
+Phase 4
+Background統合
+↓
+Phase 5
+Sampling Parallelization
+```
 
 ---
 

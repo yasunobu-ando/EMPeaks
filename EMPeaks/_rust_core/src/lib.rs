@@ -4,10 +4,12 @@ use ndarray::Array1;
 
 mod gaussian;
 mod em_engine;
+mod em_gamma_ll;
 mod pseudo_voigt;
 mod lorentzian;
 mod doniach_sunjic;
 mod tsdc;
+mod background;
 
 
 /// run_em_loop(x, intensity, mu, sigma, pi, dirichlet_alpha, max_iter, r_eps)
@@ -16,6 +18,7 @@ mod tsdc;
 /// mu, sigma, pi are modified in-place.
 /// Returns (total_iter, ll_hist, residual_hist).
 #[pyfunction]
+#[pyo3(signature = (x, intensity, mu, sigma, pi, dirichlet_alpha, max_iter, r_eps, x_min, x_max, bg_type=0u8, s_tri=0.0f64))]
 fn run_em_loop<'py>(
     py: Python<'py>,
     x: PyReadonlyArray1<'py, f64>,
@@ -26,21 +29,25 @@ fn run_em_loop<'py>(
     dirichlet_alpha: PyReadonlyArray1<'py, f64>,
     max_iter: usize,
     r_eps: f64,
-) -> PyResult<(usize, PyObject, PyObject)> {
-    let x_arr = x.as_array();
-    let int_arr = intensity.as_array();
-    let da = dirichlet_alpha.as_array();
+    x_min: f64, x_max: f64,
+    bg_type: u8, s_tri: f64,
+) -> PyResult<(usize, PyObject, PyObject, f64)> {
+    let x_vec: Vec<f64>  = x.as_array().to_vec();
+    let int_vec: Vec<f64> = intensity.as_array().to_vec();
 
     let mut mu_vec: Vec<f64>    = mu.as_array().to_vec();
     let mut sigma_vec: Vec<f64> = sigma.as_array().to_vec();
     let mut pi_vec: Vec<f64>    = pi.as_array().to_vec();
-    let da_slice: Vec<f64>      = da.to_vec();
+    let da_slice: Vec<f64>      = dirichlet_alpha.as_array().to_vec();
 
-    let (total_iter, ll_hist, res_hist) = em_engine::run_em_loop(
-        x_arr, int_arr,
+    let (total_iter, ll_hist, res_hist, s_tri_out) = py.allow_threads(|| {
+        em_engine::run_em_loop(
+        &x_vec, &int_vec,
         &mut mu_vec, &mut sigma_vec, &mut pi_vec,
         &da_slice, max_iter, r_eps,
-    );
+        x_min, x_max, bg_type, s_tri,
+    )
+    });
 
     // Write results back into the Python-owned arrays
     mu.as_array_mut().iter_mut()
@@ -56,7 +63,7 @@ fn run_em_loop<'py>(
     let ll_py  = Array1::from_vec(ll_hist).into_pyarray_bound(py).into();
     let res_py = Array1::from_vec(res_hist).into_pyarray_bound(py).into();
 
-    Ok((total_iter, ll_py, res_py))
+    Ok((total_iter, ll_py, res_py, s_tri_out))
 }
 
 /// pseudo_voigt_predict(x, x0, gamma, eta, x_min, x_max) -> ndarray
@@ -221,9 +228,214 @@ fn tsdc_mle_lbfgsb(
     }
 }
 
+/// run_pv_em_loop(x, intensity, x0, gamma_pv, eta, pi, dirichlet_alpha,
+///                use_full_opt, x_min, x_max, gamma_min, gamma_max, max_iter, r_eps,
+///                bg_type=0, s_tri=0.0)
+///
+/// Full PseudoVoigt EM loop in Rust. x0/gamma_pv/eta/pi updated in-place.
+/// bg_type: 0=none, 1=uniform, 2=squareroot, 3=linear
+/// Returns (total_iter, ll_hist, residual_hist, s_tri_out).
+#[pyfunction]
+#[pyo3(signature = (x, intensity, x0, gamma_pv, eta, pi, dirichlet_alpha,
+                    use_full_opt, x_min, x_max, gamma_min, gamma_max, max_iter, r_eps,
+                    bg_type=0u8, s_tri=0.0f64))]
+fn run_pv_em_loop<'py>(
+    py: Python<'py>,
+    x: PyReadonlyArray1<'py, f64>,
+    intensity: PyReadonlyArray1<'py, f64>,
+    mut x0: PyReadwriteArray1<'py, f64>,
+    mut gamma_pv: PyReadwriteArray1<'py, f64>,
+    mut eta: PyReadwriteArray1<'py, f64>,
+    mut pi: PyReadwriteArray1<'py, f64>,
+    dirichlet_alpha: PyReadonlyArray1<'py, f64>,
+    use_full_opt: bool,
+    x_min: f64, x_max: f64, gamma_min: f64, gamma_max: f64,
+    max_iter: usize, r_eps: f64,
+    bg_type: u8, s_tri: f64,
+) -> PyResult<(usize, PyObject, PyObject, f64)> {
+    let x_vec = x.as_array().to_vec();
+    let int_vec = intensity.as_array().to_vec();
+    let da_vec = dirichlet_alpha.as_array().to_vec();
+
+    let mut x0_vec = x0.as_array().to_vec();
+    let mut gam_vec = gamma_pv.as_array().to_vec();
+    let mut eta_vec = eta.as_array().to_vec();
+    let mut pi_vec = pi.as_array().to_vec();
+
+    let (total_iter, ll_hist, res_hist, s_tri_out) = py.allow_threads(|| {
+        em_engine::run_pv_em_loop(
+        &x_vec, &int_vec,
+        &mut x0_vec, &mut gam_vec, &mut eta_vec, &mut pi_vec,
+        &da_vec, use_full_opt,
+        x_min, x_max, gamma_min, gamma_max,
+        max_iter, r_eps, bg_type, s_tri,
+    )
+    });
+
+    x0.as_array_mut().iter_mut().zip(x0_vec.iter()).for_each(|(d, &s)| *d = s);
+    gamma_pv.as_array_mut().iter_mut().zip(gam_vec.iter()).for_each(|(d, &s)| *d = s);
+    eta.as_array_mut().iter_mut().zip(eta_vec.iter()).for_each(|(d, &s)| *d = s);
+    pi.as_array_mut().iter_mut().zip(pi_vec.iter()).for_each(|(d, &s)| *d = s);
+
+    let ll_py  = Array1::from_vec(ll_hist).into_pyarray_bound(py).into();
+    let res_py = Array1::from_vec(res_hist).into_pyarray_bound(py).into();
+    Ok((total_iter, ll_py, res_py, s_tri_out))
+}
+
+/// run_lorentzian_em_loop(x, intensity, x0, gamma_lo, pi, dirichlet_alpha,
+///                        x_min, x_max, max_iter, r_eps, bg_type=0, s_tri=0.0)
+///
+/// Full Lorentzian EM loop in Rust. x0/gamma_lo/pi updated in-place.
+/// Returns (total_iter, ll_hist, residual_hist, s_tri_out).
+#[pyfunction]
+#[pyo3(signature = (x, intensity, x0, gamma_lo, pi, dirichlet_alpha,
+                    x_min, x_max, max_iter, r_eps, bg_type=0u8, s_tri=0.0f64))]
+fn run_lorentzian_em_loop<'py>(
+    py: Python<'py>,
+    x: PyReadonlyArray1<'py, f64>,
+    intensity: PyReadonlyArray1<'py, f64>,
+    mut x0: PyReadwriteArray1<'py, f64>,
+    mut gamma_lo: PyReadwriteArray1<'py, f64>,
+    mut pi: PyReadwriteArray1<'py, f64>,
+    dirichlet_alpha: PyReadonlyArray1<'py, f64>,
+    x_min: f64, x_max: f64,
+    max_iter: usize, r_eps: f64,
+    bg_type: u8, s_tri: f64,
+) -> PyResult<(usize, PyObject, PyObject, f64)> {
+    let x_vec = x.as_array().to_vec();
+    let int_vec = intensity.as_array().to_vec();
+    let da_vec = dirichlet_alpha.as_array().to_vec();
+
+    let mut x0_vec = x0.as_array().to_vec();
+    let mut gam_vec = gamma_lo.as_array().to_vec();
+    let mut pi_vec = pi.as_array().to_vec();
+
+    let (total_iter, ll_hist, res_hist, s_tri_out) = py.allow_threads(|| {
+        em_engine::run_lorentzian_em_loop(
+        &x_vec, &int_vec,
+        &mut x0_vec, &mut gam_vec, &mut pi_vec,
+        &da_vec, x_min, x_max, max_iter, r_eps, bg_type, s_tri,
+    )
+    });
+
+    x0.as_array_mut().iter_mut().zip(x0_vec.iter()).for_each(|(d, &s)| *d = s);
+    gamma_lo.as_array_mut().iter_mut().zip(gam_vec.iter()).for_each(|(d, &s)| *d = s);
+    pi.as_array_mut().iter_mut().zip(pi_vec.iter()).for_each(|(d, &s)| *d = s);
+
+    let ll_py  = Array1::from_vec(ll_hist).into_pyarray_bound(py).into();
+    let res_py = Array1::from_vec(res_hist).into_pyarray_bound(py).into();
+    Ok((total_iter, ll_py, res_py, s_tri_out))
+}
+
+/// run_ds_em_loop(x, intensity, x0, gamma_ds, alpha, pi, dirichlet_alpha,
+///                x_min, x_max, gamma_min, gamma_max, alpha_min, alpha_max, max_iter, r_eps,
+///                bg_type=0, s_tri=0.0)
+///
+/// Full DoniachSunjic EM loop in Rust. x0/gamma_ds/alpha/pi updated in-place.
+/// Returns (total_iter, ll_hist, residual_hist, s_tri_out).
+#[pyfunction]
+#[pyo3(signature = (x, intensity, x0, gamma_ds, alpha, pi, dirichlet_alpha,
+                    x_min, x_max, gamma_min, gamma_max, alpha_min, alpha_max, max_iter, r_eps,
+                    bg_type=0u8, s_tri=0.0f64))]
+fn run_ds_em_loop<'py>(
+    py: Python<'py>,
+    x: PyReadonlyArray1<'py, f64>,
+    intensity: PyReadonlyArray1<'py, f64>,
+    mut x0: PyReadwriteArray1<'py, f64>,
+    mut gamma_ds: PyReadwriteArray1<'py, f64>,
+    mut alpha: PyReadwriteArray1<'py, f64>,
+    mut pi: PyReadwriteArray1<'py, f64>,
+    dirichlet_alpha: PyReadonlyArray1<'py, f64>,
+    x_min: f64, x_max: f64, gamma_min: f64, gamma_max: f64,
+    alpha_min: f64, alpha_max: f64,
+    max_iter: usize, r_eps: f64,
+    bg_type: u8, s_tri: f64,
+) -> PyResult<(usize, PyObject, PyObject, f64)> {
+    let x_vec = x.as_array().to_vec();
+    let int_vec = intensity.as_array().to_vec();
+    let da_vec = dirichlet_alpha.as_array().to_vec();
+
+    let mut x0_vec = x0.as_array().to_vec();
+    let mut gam_vec = gamma_ds.as_array().to_vec();
+    let mut alp_vec = alpha.as_array().to_vec();
+    let mut pi_vec = pi.as_array().to_vec();
+
+    let (total_iter, ll_hist, res_hist, s_tri_out) = py.allow_threads(|| {
+        em_engine::run_ds_em_loop(
+        &x_vec, &int_vec,
+        &mut x0_vec, &mut gam_vec, &mut alp_vec, &mut pi_vec,
+        &da_vec, x_min, x_max, gamma_min, gamma_max, alpha_min, alpha_max,
+        max_iter, r_eps, bg_type, s_tri,
+    )
+    });
+
+    x0.as_array_mut().iter_mut().zip(x0_vec.iter()).for_each(|(d, &s)| *d = s);
+    gamma_ds.as_array_mut().iter_mut().zip(gam_vec.iter()).for_each(|(d, &s)| *d = s);
+    alpha.as_array_mut().iter_mut().zip(alp_vec.iter()).for_each(|(d, &s)| *d = s);
+    pi.as_array_mut().iter_mut().zip(pi_vec.iter()).for_each(|(d, &s)| *d = s);
+
+    let ll_py  = Array1::from_vec(ll_hist).into_pyarray_bound(py).into();
+    let res_py = Array1::from_vec(res_hist).into_pyarray_bound(py).into();
+    Ok((total_iter, ll_py, res_py, s_tri_out))
+}
+
+/// run_tsdc_em_loop(t, intensity, ea, tau0, tp, pi, dirichlet_alpha,
+///                  beta, ea_min, ea_max, t_min, t_max, max_iter, r_eps, bg_type=0, s_tri=0.0)
+///
+/// Full TSDC EM loop in Rust. ea/tau0/tp/pi updated in-place.
+/// Returns (total_iter, ll_hist, residual_hist, s_tri_out).
+#[pyfunction]
+#[pyo3(signature = (t, intensity, ea, tau0, tp, pi, dirichlet_alpha,
+                    beta, ea_min, ea_max, t_min, t_max, max_iter, r_eps, bg_type=0u8, s_tri=0.0f64))]
+fn run_tsdc_em_loop<'py>(
+    py: Python<'py>,
+    t: PyReadonlyArray1<'py, f64>,
+    intensity: PyReadonlyArray1<'py, f64>,
+    mut ea: PyReadwriteArray1<'py, f64>,
+    mut tau0: PyReadwriteArray1<'py, f64>,
+    mut tp: PyReadwriteArray1<'py, f64>,
+    mut pi: PyReadwriteArray1<'py, f64>,
+    dirichlet_alpha: PyReadonlyArray1<'py, f64>,
+    beta: f64,
+    ea_min: f64, ea_max: f64, t_min: f64, t_max: f64,
+    max_iter: usize, r_eps: f64,
+    bg_type: u8, s_tri: f64,
+) -> PyResult<(usize, PyObject, PyObject, f64)> {
+    let t_vec = t.as_array().to_vec();
+    let int_vec = intensity.as_array().to_vec();
+    let da_vec = dirichlet_alpha.as_array().to_vec();
+
+    let mut ea_vec = ea.as_array().to_vec();
+    let mut tau0_vec = tau0.as_array().to_vec();
+    let mut tp_vec = tp.as_array().to_vec();
+    let mut pi_vec = pi.as_array().to_vec();
+
+    let (total_iter, ll_hist, res_hist, s_tri_out) = py.allow_threads(|| {
+        em_engine::run_tsdc_em_loop(
+        &t_vec, &int_vec,
+        &mut ea_vec, &mut tau0_vec, &mut tp_vec, &mut pi_vec,
+        &da_vec, beta, ea_min, ea_max, t_min, t_max,
+        max_iter, r_eps, bg_type, s_tri,
+    )
+    });
+
+    ea.as_array_mut().iter_mut().zip(ea_vec.iter()).for_each(|(d, &s)| *d = s);
+    tau0.as_array_mut().iter_mut().zip(tau0_vec.iter()).for_each(|(d, &s)| *d = s);
+    tp.as_array_mut().iter_mut().zip(tp_vec.iter()).for_each(|(d, &s)| *d = s);
+    pi.as_array_mut().iter_mut().zip(pi_vec.iter()).for_each(|(d, &s)| *d = s);
+
+    let ll_py  = Array1::from_vec(ll_hist).into_pyarray_bound(py).into();
+    let res_py = Array1::from_vec(res_hist).into_pyarray_bound(py).into();
+    Ok((total_iter, ll_py, res_py, s_tri_out))
+}
+
 #[pymodule]
 fn empeaks_rust_core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(run_em_loop, m)?)?;
+    m.add_function(wrap_pyfunction!(run_pv_em_loop, m)?)?;
+    m.add_function(wrap_pyfunction!(run_lorentzian_em_loop, m)?)?;
+    m.add_function(wrap_pyfunction!(run_ds_em_loop, m)?)?;
+    m.add_function(wrap_pyfunction!(run_tsdc_em_loop, m)?)?;
     m.add_function(wrap_pyfunction!(pseudo_voigt_predict, m)?)?;
     m.add_function(wrap_pyfunction!(pseudo_voigt_mle_conditional_max, m)?)?;
     m.add_function(wrap_pyfunction!(pseudo_voigt_mle_full_optimization, m)?)?;

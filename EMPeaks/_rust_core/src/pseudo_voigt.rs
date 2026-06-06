@@ -36,10 +36,16 @@ fn predict_scalar(x: f64, x0: f64, gamma: f64, eta: f64, x_min: f64, x_max: f64)
     eta * gaussian_pdf(x, x0, sigma) + (1.0 - eta) / z * cauchy_pdf(x, x0, hg)
 }
 
+pub fn predict_inplace(x: &[f64], x0: f64, gamma: f64, eta: f64, x_min: f64, x_max: f64, out: &mut [f64]) {
+    for i in 0..x.len() {
+        out[i] = predict_scalar(x[i], x0, gamma, eta, x_min, x_max);
+    }
+}
+
 pub fn predict(x: &[f64], x0: f64, gamma: f64, eta: f64, x_min: f64, x_max: f64) -> Vec<f64> {
-    x.iter()
-        .map(|&xi| predict_scalar(xi, x0, gamma, eta, x_min, x_max))
-        .collect()
+    let mut out = vec![0.0; x.len()];
+    predict_inplace(x, x0, gamma, eta, x_min, x_max, &mut out);
+    out
 }
 
 // LL using predict (with Z normalization, epsilon 1e-20 matching Python _LL)

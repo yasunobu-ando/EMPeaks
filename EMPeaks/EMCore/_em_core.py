@@ -285,15 +285,38 @@ class EMCore:
 
     def sampling(self, x, intensity, method='adapted_em', trial=10,
                  max_iter=1000, r_eps=1e-7, criteria='likelihood', stdout=False):
+        import copy
+        from EMPeaks.EMCore._backend import get_backend
+        
         hist_model = []
         hist_run_info = []
-        for i in range(trial):
-            self.init_param_uniform()
-            print('* Starting Trial # {:3d}'.format(i))
-            run_info = self.fit(x, intensity, method=method, max_iter=max_iter, r_eps=r_eps, stdout=stdout)
-            tmp_param = copy.deepcopy(self.export_param())
-            hist_model.append(tmp_param)
-            hist_run_info.append(run_info)
+
+        if get_backend() == "rust" and method in ['adapted_em', 'smart']:
+            import concurrent.futures
+            def _run_trial(i):
+                model_copy = copy.deepcopy(self)
+                model_copy.init_param_uniform()
+                if stdout:
+                    print('* Starting Trial # {:3d}'.format(i))
+                run_info = model_copy.fit(x, intensity, method=method, max_iter=max_iter, r_eps=r_eps, stdout=stdout)
+                tmp_param = model_copy.export_param()
+                return tmp_param, run_info
+
+            with concurrent.futures.ThreadPoolExecutor() as executor:
+                results = list(executor.map(_run_trial, range(trial)))
+            
+            for res in results:
+                hist_model.append(res[0])
+                hist_run_info.append(res[1])
+        else:
+            for i in range(trial):
+                self.init_param_uniform()
+                if stdout:
+                    print('* Starting Trial # {:3d}'.format(i))
+                run_info = self.fit(x, intensity, method=method, max_iter=max_iter, r_eps=r_eps, stdout=stdout)
+                tmp_param = copy.deepcopy(self.export_param())
+                hist_model.append(tmp_param)
+                hist_run_info.append(run_info)
 
         hist_LL = np.array([hist_run_info[i]['LL'] for i in range(trial)])
         hist_RMSE = np.array([hist_run_info[i]['RMSE'] for i in range(trial)])
@@ -384,7 +407,7 @@ class EMCore:
 
     def adapted_em(self, x, intensity, max_iter, r_eps, stdout):
         from EMPeaks.EMCore._backend import get_backend
-        if get_backend() == "rust" and self.background == "none" and type(self).__name__ == "GaussianMixtureModel":
+        if get_backend() == "rust" and self.background in {"none", "uniform", "squareroot", "linear"} and type(self).__name__ == "GaussianMixtureModel":
             return self._adapted_em_rust(x, intensity, max_iter, r_eps, stdout)
         return self._adapted_em_python(x, intensity, max_iter, r_eps, stdout)
 
@@ -392,23 +415,30 @@ class EMCore:
         import empeaks_rust_core
 
         start = time.time()
-        print("<< Start fitting via Adapted EM Algorithm. [Rust backend] >>")
+        print("<< Start fitting via Adapted EM Algorithm. [Rust backend / Gaussian Phase 3] >>")
 
         mu    = np.array([self.model[k].mu    for k in range(self.K)], dtype=np.float64)
         sigma = np.array([self.model[k].sigma for k in range(self.K)], dtype=np.float64)
         pi    = self.pi.astype(np.float64).copy()
         da    = self.Dirichlet_alpha.astype(np.float64).copy()
 
-        total_iter, ll_hist, res_hist = empeaks_rust_core.run_em_loop(
+        bg_type = {"none": 0, "uniform": 1, "squareroot": 2, "linear": 3}.get(self.background, 0)
+        s_tri_in = float(self.model[-1].s_tri) if self.background == "linear" else 0.0
+
+        total_iter, ll_hist, res_hist, s_tri_out = empeaks_rust_core.run_em_loop(
             x.astype(np.float64), intensity.astype(np.float64),
             mu, sigma, pi, da, max_iter, r_eps,
+            self.x_min, self.x_max, bg_type, s_tri_in,
         )
 
         # 結果を Python 側モデルに反映
         for k in range(self.K):
-            self.model[k].mu    = mu[k]
-            self.model[k].sigma = sigma[k]
-        self.pi = pi
+            self.model[k].mu    = float(mu[k])
+            self.model[k].sigma = float(sigma[k])
+        self.pi[:self.K_all] = pi
+        if self.background == "linear":
+            self.model[-1].s_tri = s_tri_out
+            self.model[-1].s_uni = 1.0 - s_tri_out
 
         t_tot = time.time() - start
         ll = float(ll_hist[-1]) if len(ll_hist) > 0 else float('nan')
@@ -553,32 +583,28 @@ class EMCore:
         return
 
     def leastsq_for_normalization_factor(self, x, intensity, stdout):
-        print('<< Optimizing normalization factor by using least square method. >>')
-
-        def model(x, param):
-            return self.predict(x) * param
-
-        def residual(param, x, y):
-            return y - model(x, param)
-
-        init_param = np.abs(integrate.trapezoid(intensity, x))
-        print('init', init_param)
+        if stdout:
+            print('<< Optimizing normalization factor by exact linear least square. >>')
 
         start = time.time()
-        ls = optimize.least_squares(residual, init_param,
-                                    args=(x, intensity),
-                                    loss='linear'
-                                    )
-        self.N_tot = ls.x[0]
+        pred = self.predict(x)
+        
+        denom = np.sum(pred ** 2)
+        if denom == 0:
+            self.N_tot = np.abs(integrate.trapezoid(intensity, x))
+        else:
+            self.N_tot = np.sum(intensity * pred) / denom
+            
         self.N = list(self.pi * self.N_tot)
 
-        rmse = np.sqrt((ls['cost']) * 2.0 / x.size)
-        if ls["success"] == True:
-            print("   non-linear least-square optimization is successfully finished.")
+        # evaluate rmse
+        res = intensity - pred * self.N_tot
+        rmse = np.sqrt(np.sum(res ** 2) / x.size)
+        
+        if stdout:
+            print("   exact linear least-square optimization is successfully finished.")
             print("            RMSE:      {:12.6e}\n"
                   "    Elapsed time:      {:12.6e} s\n".format(rmse, time.time() - start))
-        else:
-            print("   Warning: non-linear least-square optimization is failed.")
 
         return rmse
 

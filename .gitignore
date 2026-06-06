@@ -3,6 +3,7 @@
 
 # Python 仮想環境
 .venv/
+.venv*/
 venv/
 ENV/
 
@@ -30,3 +31,12 @@ EMPeaks/_rust_core/target/
 # エディタ設定
 .vscode/
 .idea/
+
+# スクラッチ用の一時ファイル・ログ
+benchmark_output.txt
+benchmark_results.csv
+fix_stop_cond.py
+release_gil.py
+update_em_engine.py
+test_*.py
+!tests/test_*.py
