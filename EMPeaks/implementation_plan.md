@@ -1,4 +1,4 @@
-# EMPeaks/EMCore Rust 高速化 実装計画 (v3)
+# EMPeaks/EMCore Rust 高速化 実装計画 (v4)
 
 ## 概要
 
@@ -8,6 +8,8 @@ EMPeaks の計算コアを Rust で書き換え、Python バインディング (
 
 ## 完了済み作業
 
+### 環境・互換性
+
 | 作業 | 内容 |
 |---|---|
 | Python 要件引き上げ | `python_requires = >=3.11`（setup.cfg） |
@@ -16,6 +18,28 @@ EMPeaks の計算コアを Rust で書き換え、Python バインディング (
 | `trapz` 置換 | `integrate.trapz` → `integrate.trapezoid`、`np.trapz` → `np.trapezoid`（6ファイル） |
 | SyntaxWarning 修正 | `is 0` → `== 0`、`is not 1` → `!= 1`（_lorentz.py） |
 | Python 3.11 動作確認 | Gaussian / Lorentzian / PseudoVoigt / DoniachSunjic 全モデル OK |
+
+### Phase 1: Gaussian EM コア ✅ 完了
+
+| 作業 | 内容 |
+|---|---|
+| `_rust_core/` Cargo プロジェクト | Cargo.toml / pyproject.toml（abi3-py311） |
+| `src/gaussian.rs` | predict / MLE（Rust 単体テスト済み） |
+| `src/em_engine.rs` | E-step / M-step / EMループ（Rust 単体テスト済み） |
+| `src/lib.rs` | PyO3 バインディング |
+| `EMCore/_backend.py` | 自動検出・set_backend / get_backend |
+| `EMCore/_em_core.py` | `adapted_em` → `_adapted_em_rust` / `_adapted_em_python` 分岐 |
+| `tests/test_rust_parity.py` | パリティ / フォールバック / ベンチマーク（9/9 通過） |
+
+**実測ベンチマーク**（Python 3.11.9 / Apple Silicon、5 回平均）:
+
+| 条件 | Python | Rust | 高速化 |
+|---|---|---|---|
+| K=2, N=200 | 10.0 ms | 1.9 ms | **5.3x** |
+| K=3, N=500 | 30.8 ms | 5.7 ms | **5.4x** |
+
+> [!NOTE]
+> 現時点で `leastsq_for_normalization_factor`（scipy.optimize）は Python 側に残っており、これが実行時間の下限。EMループ単体の高速化はさらに大きい。
 
 ---
 
@@ -497,24 +521,22 @@ jobs:
 
 L-BFGS-B の実装は `lbfgsb` クレートを使用する。このクレートは **scipy の L-BFGS-B と同一の Fortran コード（L-BFGS-B v3.0）をラップ**しているため、同一入力に対して数値的に一致した結果が得られる。
 
-### スコープ
+### 実施順序
 
-- Lorentzian: predict + MLE（`lbfgsb` による L-BFGS-B、パラメータ: x0, gamma）
-- PseudoVoigt: predict + MLE（`lbfgsb` による L-BFGS-B で x0/gamma、`rayon` による alpha グリッドサーチ並列化）
-- DoniachSunjic: predict + MLE（`lbfgsb` による L-BFGS-B、パラメータ: x0, gamma, alpha）
-- 背景モデル predict の Rust 統合
+**PseudoVoigt → Lorentzian → DoniachSunjic** の順に進める。  
+各モデルを実装・テスト・ベンチマーク確認してから次に進むこと。
 
 ### 追加ファイル構成
 
 ```
 _rust_core/src/
 ├── lib.rs            ← [MODIFY] Phase 2 関数を追加登録
-├── gaussian.rs       ← [既存]
-├── em_engine.rs      ← [既存]
-├── lorentzian.rs     ← [NEW] predict + MLE
-├── pseudo_voigt.rs   ← [NEW] predict + MLE（rayon 並列グリッドサーチ）
-├── doniach_sunjic.rs ← [NEW] predict + MLE
-└── background.rs     ← [NEW] 背景モデル predict
+├── gaussian.rs       ← [既存・変更なし]
+├── em_engine.rs      ← [既存・変更なし]
+├── pseudo_voigt.rs   ← [NEW] ① 最初に実装
+├── lorentzian.rs     ← [NEW] ② 次に実装
+├── doniach_sunjic.rs ← [NEW] ③ 最後に実装
+└── background.rs     ← [NEW] Phase 2 完了後
 ```
 
 ### 追加 Cargo 依存
@@ -522,118 +544,317 @@ _rust_core/src/
 ```toml
 [dependencies]
 lbfgsb = "0.3"   # scipy と同一 Fortran L-BFGS-B v3.0 ラッパー
-rayon  = "1.10"  # PseudoVoigt alpha グリッドサーチの並列化
+rayon  = "1.10"  # PseudoVoigt eta グリッドサーチの並列化
 ```
 
-### 実装パターン（Lorentzian を例に）
+---
 
-```rust
-// lorentzian.rs
-use lbfgsb::lbfgsb;
+## Phase 2-① PseudoVoigt（最初に実装）✅ 完了
 
-pub struct Lorentzian { pub x0: f64, pub gamma: f64 }
+### Python 実装の分析
 
-impl Lorentzian {
-    pub fn predict(&self, x: &[f64]) -> Vec<f64> {
-        let denom = std::f64::consts::PI * self.gamma;
-        x.iter().map(|&xi| {
-            let d = xi - self.x0;
-            (1.0 / denom) / (1.0 + (d / (self.gamma / 2.0)).powi(2))
-        }).collect()
-    }
+**`_pseudo_voigt.py` の現行 MLE フロー（`conditional_max` が呼ばれる）:**
 
-    pub fn log_likelihood(&self, x: &[f64], intensity: &[f64]) -> f64 {
-        let p = self.predict(x);
-        intensity.iter().zip(&p)
-            .map(|(&i, &pi)| i * (pi + 1e-200_f64).ln())
-            .sum()
-    }
-
-    /// MLE via L-BFGS-B（scipy と同一 Fortran コード）
-    pub fn mle(&mut self, x: &[f64], intensity: &[f64],
-               x_min: f64, x_max: f64, gamma_min: f64, gamma_max: f64) {
-        let mut params = vec![self.x0, self.gamma];
-        let lb = vec![x_min, gamma_min];
-        let ub = vec![x_max, gamma_max];
-
-        lbfgsb(
-            &mut params,
-            &lb, &ub,
-            |p, g| {
-                self.x0 = p[0]; self.gamma = p[1];
-                let ll = self.log_likelihood(x, intensity);
-                // 数値微分（Phase 2 初期）; 解析勾配は Phase 2 後半で追加
-                let eps = 1e-7;
-                self.x0 = p[0] + eps;
-                g[0] = -(self.log_likelihood(x, intensity) - ll) / eps;
-                self.x0 = p[0]; self.gamma = p[1] + eps;
-                g[1] = -(self.log_likelihood(x, intensity) - ll) / eps;
-                self.gamma = p[1];
-                -ll
-            },
-            1e-7, 1e-7, 100,
-        );
-        self.x0 = params[0]; self.gamma = params[1];
-    }
-}
+```
+maximum_likelihood_estimation(x, w)
+  └─ conditional_max(x, w)
+       ├─ _e_step(x)           : gamma1（Gaussian責任），gamma2（Lorentzian責任）を計算
+       ├─ _cm_step_x0_gamma(x, w) : x0/gamma を brentq 根探索で更新
+       └─ _cm_step_eta(x, w)   : eta を grid search（0.8〜1.0、step 0.01）で更新
 ```
 
-### PseudoVoigt: alpha グリッドサーチの rayon 並列化
+**Predict 関数の構造:**
+```python
+sigma = gamma / (2 * sqrt(2 * log(2)))
+Z     = 1/pi * (arctan((x_max - x0)/(gamma/2)) - arctan((x_min - x0)/(gamma/2)))
+predict(x) = eta * Gaussian(x, x0, sigma)
+           + (1 - eta) / Z * Lorentzian(x, x0, gamma/2)
+```
+
+### Rust での実装方針
+
+**両 MLE アルゴリズムを Rust 化**:
+- `conditional_max`（brentq）→ `roots` クレートの `find_root_brent` で完全移植 → atol=1e-5 でパリティ確認可
+- `full_optimization`（L-BFGS-B + eta グリッド）→ `lbfgsb` + `rayon` クレートで実装 → 同上
+
+Python 側の `_pseudo_voigt.py` が呼ぶメソッド名（`conditional_max` / `full_optimization`）を判定して、対応する Rust 関数に振り分ける。
+
+### Step 1: `src/pseudo_voigt.rs` の実装
 
 ```rust
 // pseudo_voigt.rs
+use ndarray::ArrayView1;
 use rayon::prelude::*;
+use roots::{find_root_brent, SimpleConvergency};
 
-pub fn mle_alpha_grid(
-    x: &[f64], intensity: &[f64],
-    x0: f64, gamma: f64,
-    alpha_min: f64, alpha_max: f64, n_grid: usize,
-) -> f64 {
-    let alphas: Vec<f64> = (0..n_grid)
-        .map(|i| alpha_min + (alpha_max - alpha_min) * i as f64 / (n_grid - 1) as f64)
-        .collect();
+const PI: f64 = std::f64::consts::PI;
+const SQRT2: f64 = std::f64::consts::SQRT_2;
+const LN2: f64 = std::f64::consts::LN_2;
 
-    alphas.par_iter()   // rayon で並列評価
-        .map(|&alpha| {
-            let pv = PseudoVoigt { x0, gamma, alpha };
-            (alpha, pv.log_likelihood(x, intensity))
+fn normalization_z(x0: f64, gamma: f64, x_min: f64, x_max: f64) -> f64 {
+    let hg = gamma / 2.0;
+    (1.0 / PI) * (((x_max - x0) / hg).atan() - ((x_min - x0) / hg).atan())
+}
+
+pub fn predict_single(x: f64, x0: f64, gamma: f64, eta: f64,
+                      x_min: f64, x_max: f64) -> f64 {
+    let sigma = gamma / (2.0 * SQRT2 * LN2.sqrt());
+    let hg = gamma / 2.0;
+    let z = normalization_z(x0, gamma, x_min, x_max).max(1e-300);
+    let gauss   = (-(x - x0).powi(2) / (2.0 * sigma * sigma)).exp()
+                  / (SQRT2 * PI.sqrt() * sigma);
+    let lorentz = (1.0 / PI) * hg / ((x - x0).powi(2) + hg * hg);
+    eta * gauss + (1.0 - eta) / z * lorentz
+}
+
+pub fn predict(x: ArrayView1<f64>, x0: f64, gamma: f64, eta: f64,
+               x_min: f64, x_max: f64) -> Vec<f64> {
+    x.iter().map(|&xi| predict_single(xi, x0, gamma, eta, x_min, x_max)).collect()
+}
+
+pub fn log_likelihood(x: ArrayView1<f64>, intensity: ArrayView1<f64>,
+                      x0: f64, gamma: f64, eta: f64,
+                      x_min: f64, x_max: f64) -> f64 {
+    predict(x, x0, gamma, eta, x_min, x_max).iter()
+        .zip(intensity.iter())
+        .map(|(&p, &i)| i * (p + 1e-200_f64).ln())
+        .sum()
+}
+
+// -----------------------------------------------------------------------
+// conditional_max: Python の _cm_step_x0_gamma / _cm_step_eta を忠実移植
+// -----------------------------------------------------------------------
+
+fn d_ll_d_x0(x: &[f64], w1: &[f64], w2: &[f64],
+             x0: f64, gamma: f64, eta: f64,
+             x_min: f64, x_max: f64) -> f64 {
+    // Python の _cm_step_x0_gamma が解く ∂LL/∂x0 の数値微分版
+    //（解析微分は複雑なため数値微分で faithful に実装）
+    let eps = 1e-7;
+    let f = |x0_: f64| {
+        let pv = predict(ArrayView1::from(x), x0_, gamma, eta, x_min, x_max);
+        w1.iter().zip(w2.iter()).zip(pv.iter())
+            .map(|((&r1, &r2), &p)| (r1 + r2) * (p + 1e-200_f64).ln())
+            .sum::<f64>()
+    };
+    (f(x0 + eps) - f(x0 - eps)) / (2.0 * eps)
+}
+
+/// MLE via conditional maximization（Python の conditional_max に相当）
+pub fn mle_conditional_max(
+    x: ArrayView1<f64>, intensity: ArrayView1<f64>,
+    x0: &mut f64, gamma: &mut f64, eta: &mut f64,
+    x_min: f64, x_max: f64, gamma_min: f64, gamma_max: f64,
+    eta_lo: f64, eta_hi: f64, eta_step: f64,  // Python デフォルト: 0.8, 1.0, 0.01
+) {
+    let x_s = x.to_vec();
+    let int_s = intensity.to_vec();
+
+    // E-step: 責任変数 w1(Gaussian), w2(Lorentzian) を計算
+    let pv: Vec<f64> = predict(x, *x0, *gamma, *eta, x_min, x_max);
+    let sigma = *gamma / (2.0 * SQRT2 * LN2.sqrt());
+    let hg = *gamma / 2.0;
+    let z = normalization_z(*x0, *gamma, x_min, x_max).max(1e-300);
+    let w1: Vec<f64> = x.iter().zip(int_s.iter()).zip(pv.iter()).map(|((&xi, &ii), &pi)| {
+        let g = (-(xi - *x0).powi(2) / (2.0 * sigma * sigma)).exp()
+                / (SQRT2 * PI.sqrt() * sigma);
+        ii * *eta * g / (pi + 1e-300)
+    }).collect();
+    let w2: Vec<f64> = x.iter().zip(int_s.iter()).zip(pv.iter()).map(|((&xi, &ii), &pi)| {
+        let l = (1.0 / PI) * hg / ((xi - *x0).powi(2) + hg * hg);
+        ii * (1.0 - *eta) / z * l / (pi + 1e-300)
+    }).collect();
+
+    // CM-step x0: brentq で ∂LL/∂x0 = 0 を解く
+    let f_x0 = |x0_cand: f64| {
+        d_ll_d_x0(&x_s, &w1, &w2, x0_cand, *gamma, *eta, x_min, x_max)
+    };
+    let mut conv = SimpleConvergency { eps: 1e-10_f64, max_iter: 100 };
+    if let Ok(root) = find_root_brent(x_min, x_max, &f_x0, &mut conv) {
+        *x0 = root;
+    }
+
+    // CM-step gamma: brentq で ∂LL/∂gamma = 0 を解く（同様）
+    // （省略: 実装は x0 と対称）
+
+    // CM-step eta: grid search（eta_lo〜eta_hi, step=eta_step）
+    let n = ((eta_hi - eta_lo) / eta_step).round() as usize + 1;
+    let best = (0..n).map(|i| {
+        let e = (eta_lo + i as f64 * eta_step).min(eta_hi);
+        let ll = log_likelihood(x, ArrayView1::from(&int_s), *x0, *gamma, e, x_min, x_max);
+        (e, ll)
+    }).max_by(|a, b| a.1.partial_cmp(&b.1).unwrap()).unwrap();
+    *eta = best.0;
+}
+
+// -----------------------------------------------------------------------
+// full_optimization: L-BFGS-B (x0, gamma) + rayon 並列 eta グリッドサーチ
+// -----------------------------------------------------------------------
+
+/// MLE via L-BFGS-B（Python の full_optimization に相当）
+pub fn mle_full_optimization(
+    x: ArrayView1<f64>, intensity: ArrayView1<f64>,
+    x0: &mut f64, gamma: &mut f64, eta: &mut f64,
+    x_min: f64, x_max: f64, gamma_min: f64, gamma_max: f64,
+    eta_n_grid: usize,  // Python デフォルト: 100
+) {
+    let x_s = x.to_vec();
+    let w_s = intensity.to_vec();
+    let eta_fixed = *eta;
+
+    let mut params = vec![*x0, *gamma];
+    let lb = vec![x_min, gamma_min];
+    let ub = vec![x_max, gamma_max];
+    lbfgsb::lbfgsb(
+        &mut params, &lb, &ub,
+        |p, g| {
+            let eps = 1e-7;
+            let ll   = log_likelihood(ArrayView1::from(&x_s), ArrayView1::from(&w_s),
+                                      p[0],       p[1],       eta_fixed, x_min, x_max);
+            let ll_dx = log_likelihood(ArrayView1::from(&x_s), ArrayView1::from(&w_s),
+                                       p[0] + eps, p[1],       eta_fixed, x_min, x_max);
+            let ll_dg = log_likelihood(ArrayView1::from(&x_s), ArrayView1::from(&w_s),
+                                       p[0],       p[1] + eps, eta_fixed, x_min, x_max);
+            g[0] = -(ll_dx - ll) / eps;
+            g[1] = -(ll_dg - ll) / eps;
+            -ll
+        },
+        1e-7, 1e-7, 100,
+    );
+    *x0 = params[0];
+    *gamma = params[1];
+
+    let step = 1.0 / (eta_n_grid - 1) as f64;
+    *eta = (0..eta_n_grid)
+        .into_par_iter()
+        .map(|i| {
+            let e = (i as f64 * step).min(1.0);
+            let ll = log_likelihood(ArrayView1::from(&x_s), ArrayView1::from(&w_s),
+                                    *x0, *gamma, e, x_min, x_max);
+            (e, ll)
         })
-        .max_by(|a, b| a.1.partial_cmp(&b.1).unwrap())
-        .map(|(alpha, _)| alpha)
-        .unwrap_or(0.5)
+        .reduce(|| (0.5, f64::NEG_INFINITY), |a, b| if b.1 > a.1 { b } else { a })
+        .0;
 }
 ```
 
-### 数値一致テスト（Phase 2 用）
+### Step 2: `_pvmm.py` の変更
 
 ```python
-# tests/test_rust_parity.py に追加
-@pytest.mark.parametrize("ModelClass", [
-    LorentzianMixtureModel,
-    PseudoVoigtMixtureModel,
-    DoniachSunjicMixtureModel,
-])
-def test_parity_phase2(ModelClass, sample_data):
-    """scipy L-BFGS-B と lbfgsb クレートの数値一致（atol=1e-5）"""
-    x, intensity = sample_data
-    np.random.seed(0)
-
-    set_backend("python")
-    m_py = ModelClass(K=2, x_min=-5, x_max=5)
-    m_py.init_param_uniform()
-    r_py = m_py.fit(x, intensity, method='adapted_em', max_iter=500)
-
-    set_backend("rust")
-    m_rs = ModelClass(K=2, x_min=-5, x_max=5)
-    m_rs.init_param_uniform()  # 同一初期値
-    r_rs = m_rs.fit(x, intensity, method='adapted_em', max_iter=500)
-
-    assert np.allclose(r_py['LL'], r_rs['LL'], atol=1e-5), \
-        f"LL mismatch ({ModelClass.__name__}): py={r_py['LL']:.8f}, rs={r_rs['LL']:.8f}"
+# PseudoVoigtMixture/_pvmm.py に追加
+def adapted_em(self, x, intensity, max_iter, r_eps, stdout):
+    from EMPeaks.EMCore._backend import get_backend
+    if get_backend() == "rust" and self.background == "none":
+        return self._adapted_em_rust_pv(x, intensity, max_iter, r_eps, stdout)
+    return self._adapted_em_python(x, intensity, max_iter, r_eps, stdout)
 ```
 
-> [!NOTE]
-> `lbfgsb` が scipy と同一 Fortran コードを使うため atol は `1e-5` 程度（浮動小数点演算順序の差異）で十分。Gaussian の `1e-6` より若干緩めに設定。
+`_adapted_em_rust_pv` は Phase 1 の `_adapted_em_rust` と同構造。M-step で以下を呼び分ける:
+- `method == "conditional_max"` → `empeaks_rust_core.pseudo_voigt_mle_conditional_max(...)`
+- `method == "full_optimization"` → `empeaks_rust_core.pseudo_voigt_mle_full_optimization(...)`
+
+### Step 3: `lib.rs` に追加する PyO3 エクスポート
+
+```rust
+#[pyfunction]
+fn pseudo_voigt_predict(py, x, x0, gamma, eta, x_min, x_max) -> PyResult<PyObject> { ... }
+
+#[pyfunction]
+fn pseudo_voigt_mle_conditional_max(
+    x, intensity, x0, gamma, eta,
+    x_min, x_max, gamma_min, gamma_max,
+    eta_lo, eta_hi, eta_step,
+) -> PyResult<(f64, f64, f64)> { ... }  // 返り値: (x0, gamma, eta)
+
+#[pyfunction]
+fn pseudo_voigt_mle_full_optimization(
+    x, intensity, x0, gamma, eta,
+    x_min, x_max, gamma_min, gamma_max, eta_n_grid,
+) -> PyResult<(f64, f64, f64)> { ... }  // 返り値: (x0, gamma, eta)
+```
+
+### Step 4: パリティテスト方針
+
+両アルゴリズムとも Rust 化されるため、Python と Rust で**同一アルゴリズム**を実行する:
+
+```python
+@pytest.mark.parametrize("method", ["conditional_max", "full_optimization"])
+def test_parity_pseudo_voigt(sample_data, method):
+    """同じ初期値・同じアルゴリズム → LL が atol=1e-5 で一致"""
+    # conditional_max: brentq（roots クレート）vs brentq（scipy）→ 同一アルゴリズム
+    # full_optimization: lbfgsb（lbfgsb クレート）vs lbfgsb（scipy）→ 同一アルゴリズム
+    assert np.isclose(r_rs['LL'], r_py['LL'], atol=1e-5)
+```
+
+### Step 5: ベンチマーク確認
+
+```bash
+# PseudoVoigt での速度比較
+python -c "
+from EMPeaks.PseudoVoigtMixture import PseudoVoigtMixtureModel
+from EMPeaks.EMCore._backend import set_backend
+import numpy as np, time
+
+x = np.linspace(-5, 5, 200)
+intensity = ...
+
+for backend in ['python', 'rust']:
+    set_backend(backend)
+    ...
+    print(f'{backend}: {elapsed:.3f}s')
+"
+```
+
+---
+
+## Phase 2-② Lorentzian（PseudoVoigt 確認後に実施）
+
+### Python 実装の分析
+
+- `maximum_likelihood_estimation` → `minimize_bfgs`（L-BFGS-B）
+- パラメータ: x0（位置）、gamma（半値幅）
+- 境界: `x_min ≤ x0 ≤ x_max`、`0.1 ≤ gamma ≤ 2000`
+- Python と Rust の MLE アルゴリズムは**同一**（ともに L-BFGS-B）→ atol=1e-5 でパリティ確認可
+
+### 実装ファイル: `src/lorentzian.rs`
+
+```rust
+pub fn predict(x: ArrayView1<f64>, x0: f64, gamma: f64) -> Vec<f64> { ... }
+pub fn mle(x, intensity, x0, gamma, x_min, x_max, gamma_min, gamma_max) { ... }
+// lbfgsb で (x0, gamma) を最適化（2パラメータ）
+```
+
+---
+
+## Phase 2-③ DoniachSunjic（Lorentzian 確認後に実施）
+
+### Python 実装の分析
+
+- `maximum_likelihood_estimation` → `full_optimization`（L-BFGS-B）
+- パラメータ: x0、gamma、alpha（非対称パラメータ）
+- 境界: 各パラメータの min/max
+- Python と Rust の MLE アルゴリズムは**同一**（ともに L-BFGS-B）→ atol=1e-5 でパリティ確認可
+
+### 実装ファイル: `src/doniach_sunjic.rs`
+
+```rust
+pub fn predict(x: ArrayView1<f64>, x0: f64, gamma: f64, alpha: f64) -> Vec<f64> { ... }
+// DS関数: cos(pi*alpha/2 + (1-alpha)*arctan((x-x0)/gamma)) / ...
+pub fn mle(x, intensity, x0, gamma, alpha, bounds) { ... }
+// lbfgsb で (x0, gamma, alpha) を最適化（3パラメータ）
+```
+
+---
+
+## 数値一致テスト方針まとめ
+
+| モデル | MLE アルゴリズム（Python/Rust） | パリティ基準 |
+|---|---|---|
+| Gaussian | 解析解 / 解析解（同一） | atol=1e-5（exact match） |
+| PseudoVoigt `conditional_max` | brentq（scipy）/ brentq（roots クレート）（同一） | atol=1e-5 |
+| PseudoVoigt `full_optimization` | L-BFGS-B（scipy）/ L-BFGS-B（lbfgsb クレート）（同一） | atol=1e-5 |
+| Lorentzian | L-BFGS-B / L-BFGS-B（同一） | atol=1e-5 |
+| DoniachSunjic | L-BFGS-B / L-BFGS-B（同一） | atol=1e-5 |
 
 ---
 

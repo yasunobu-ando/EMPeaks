@@ -384,7 +384,7 @@ class EMCore:
 
     def adapted_em(self, x, intensity, max_iter, r_eps, stdout):
         from EMPeaks.EMCore._backend import get_backend
-        if get_backend() == "rust" and self.background == "none":
+        if get_backend() == "rust" and self.background == "none" and type(self).__name__ == "GaussianMixtureModel":
             return self._adapted_em_rust(x, intensity, max_iter, r_eps, stdout)
         return self._adapted_em_python(x, intensity, max_iter, r_eps, stdout)
 

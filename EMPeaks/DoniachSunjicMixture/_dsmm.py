@@ -29,6 +29,103 @@ class DoniachSunjicMixtureModel(EMCore):
         self.model[0:K] = [DoniachSunjic(x_min, x_max, gamma_min, gamma_max, alpha_min, alpha_max)
                            for k in range(self.K)]
 
+    def adapted_em(self, x, intensity, max_iter, r_eps, stdout):
+        from EMPeaks.EMCore._backend import get_backend
+        if get_backend() == "rust" and self.background == "none":
+            return self._adapted_em_rust_ds(x, intensity, max_iter, r_eps, stdout)
+        return self._adapted_em_python(x, intensity, max_iter, r_eps, stdout)
+
+    def _adapted_em_rust_ds(self, x, intensity, max_iter, r_eps, stdout):
+        import empeaks_rust_core
+        import time
+
+        start = time.time()
+        print("<< Start fitting via Adapted EM Algorithm. [Rust backend / DoniachSunjic] >>")
+
+        ll_0 = self.log_likelihood(x, intensity)
+        ll_hist = [ll_0]
+        res_hist = [0.0]
+        total_iter = max_iter
+        t_tot = 0.0
+        ll = ll_0
+        residual = 0.0
+
+        x_f64 = x.astype(np.float64)
+
+        for it in range(max_iter):
+            self.e_step(x)
+
+            N_k = np.array([np.sum(intensity * self._gamma[k]) for k in range(self.K_all)])
+            self.pi = (N_k + self.Dirichlet_alpha - 1) / np.sum(N_k + self.Dirichlet_alpha - 1)
+            self.pi[self.pi < 0] = 0.0
+            self.pi = self.pi / np.sum(self.pi)
+
+            for k in range(self.K):
+                w = (intensity * self._gamma[k]).astype(np.float64)
+                if np.sum(w) == 0:
+                    continue
+                m = self.model[k]
+                x0_new, gamma_new, alpha_new = empeaks_rust_core.doniach_sunjic_mle(
+                    x_f64, w,
+                    m.x0, m.gamma, m.alpha,
+                    m.x_min, m.x_max,
+                    m.gamma_min, m.gamma_max,
+                    m.alpha_min, m.alpha_max,
+                )
+                self.model[k].x0 = x0_new
+                self.model[k].gamma = gamma_new
+                self.model[k].alpha = alpha_new
+
+            ll = self.log_likelihood(x, intensity)
+            residual = (ll - ll_0) / np.abs(ll_0)
+            ll_hist.append(ll)
+            res_hist.append(residual)
+
+            if stdout and it % 10 == 0:
+                t2 = time.time()
+                print("> iteration #{:3d}, LL={:10.8e}, residual={:4.3e}, elapsed time: {:5.2f} s"
+                      .format(it, ll, residual, t2 - start))
+
+            if residual < 0.0:
+                print("Warning!!!! residual is negative!!!  Parameters are initialized again.")
+                self.init_param_uniform()
+            elif residual < r_eps:
+                t_tot = time.time() - start
+                total_iter = it + 1
+                print('Convergence is achieved at iter. {:3d}, elapsed time {:5.2f} s'
+                      .format(it, t_tot))
+                print('   LogLikelihood:     {:12.8e}\n        residual:      {:12.8e}'
+                      .format(ll, residual))
+                break
+
+            ll_0 = ll
+        else:
+            t_tot = time.time() - start
+            print('>>> Convergence is not achieved within {:3d} iterations, elapsed time: {:5.2f} s'
+                  .format(max_iter, t_tot))
+            print('   LogLikelihood:      {:12.8e}\n        residual:       {:12.8e}'
+                  .format(ll, residual))
+
+        rmse = self.leastsq_for_normalization_factor(x, intensity, stdout)
+        param = self.export_param()
+
+        run_info = {
+            'total_iter': total_iter,
+            'total_time': t_tot,
+            'time/iter': t_tot / max(total_iter, 1),
+            'LL': ll,
+            'LL_hist': ll_hist,
+            'LL_residual': residual,
+            'LL_residual_hist': res_hist,
+            'RMSE': rmse,
+        }
+        if stdout:
+            print('Estimated model parameters and scores are following:')
+            self.print_param_summary(param)
+            print('   LL:      {:12.8e}\n'
+                  '   RMSE:     {:12.8e}\n'.format(run_info['LL'], run_info['RMSE']))
+        return run_info
+
     def set_single_params(self, **param):
         # setting parameters for each single Gaussian model.
         param_set = {"x0", "gamma", "alpha"}
