@@ -302,8 +302,13 @@ class EMCore:
                 tmp_param = model_copy.export_param()
                 return tmp_param, run_info
 
-            with concurrent.futures.ThreadPoolExecutor() as executor:
-                results = list(executor.map(_run_trial, range(trial)))
+            from EMPeaks.EMCore._backend import get_backend
+            if get_backend() == "rust":
+                with concurrent.futures.ThreadPoolExecutor(max_workers=min(trial, 8)) as executor:
+                    results = list(executor.map(_run_trial, range(trial)))
+            else:
+                # 純粋なPython実装の場合、GILの競合によりThreadPoolExecutorがハングアップするため直列実行する
+                results = [_run_trial(i) for i in range(trial)]
             
             for res in results:
                 hist_model.append(res[0])

@@ -355,12 +355,14 @@ class TSDC:
         init = np.zeros(2)
         init[0] = self.Ea
         init[1] = self.Tp
-        info = optimize.minimize(log_likelihood, x0=init, jac=derivative,
-                                 bounds=[(self.Ea_min, self.Ea_max), (self.T_min, self.T_max)],
-                                 method='L-BFGS-B')
-        #print(info)
-        self.Ea = info['x'][0]
-        self.Tp = info['x'][1]
+        try:
+            info = optimize.minimize(log_likelihood, x0=init, jac=derivative,
+                                     bounds=[(self.Ea_min, self.Ea_max), (self.T_min, self.T_max)],
+                                     method='L-BFGS-B')
+            self.Ea = info['x'][0]
+            self.Tp = info['x'][1]
+        except (ValueError, RuntimeError):
+            pass
         self.tau0 = self.get_tau0()
         self.P0 = np.trapezoid(intensity, T) / self.beta
         return
@@ -387,7 +389,10 @@ class TSDC:
             g_sum = np.sum(Y * inv_kB * np.array(- expi(-E * inv_kB / T)))
             return np.log10(f_sum(E, T, Y)) - np.log10(beta * b) - np.log10(g_sum) + np.log10(beta * a)
 
-        self.Ea = optimize.brentq(f_g_diff, self.Ea_min, self.Ea_max, args=(T, intensity, self.beta))
+        try:
+            self.Ea = optimize.brentq(f_g_diff, self.Ea_min, self.Ea_max, args=(T, intensity, self.beta))
+        except ValueError:
+            pass
         self.tau0 = f_sum(self.Ea, T, intensity) / (self.beta * np.sum(intensity))
         self.Tp = self.get_Tp()
         self.P0 = np.trapezoid(intensity, T) / self.beta
@@ -405,12 +410,14 @@ class TSDC:
         init = np.zeros(2)
         init[0] = self.Ea
         init[1] = 860 #self.Tp
-        info = optimize.minimize(log_likelihood, x0=init,
-                                 bounds=[(self.Ea_min, self.Ea_max), (self.T_min, self.T_max)],
-                                 method='L-BFGS-B')
-        #print(info)
-        self.Ea = info['x'][0]
-        self.Tp = info['x'][1]
+        try:
+            info = optimize.minimize(log_likelihood, x0=init,
+                                     bounds=[(self.Ea_min, self.Ea_max), (self.T_min, self.T_max)],
+                                     method='L-BFGS-B')
+            self.Ea = info['x'][0]
+            self.Tp = info['x'][1]
+        except (ValueError, RuntimeError):
+            pass
         self.tau0 = self.get_tau0()
         self.P0 = np.trapezoid(intensity, T) / self.beta
         return

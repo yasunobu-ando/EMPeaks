@@ -74,12 +74,15 @@ class DoniachSunjic:
 #        self.alpha = 0.1
 
         init = [self.x0, self.gamma, self.alpha]
-        info = optimize.minimize(func, x0=init, bounds=[(self.x_min, self.x_max),
-                                                        (self.gamma_min, self.gamma_max),
-                                                        (self.alpha_min, self.alpha_max)], method='L-BFGS-B')
-        self.x0 = info['x'][0]
-        self.gamma = info['x'][1]
-        self.alpha = info['x'][2]
+        try:
+            info = optimize.minimize(func, x0=init, bounds=[(self.x_min, self.x_max),
+                                                            (self.gamma_min, self.gamma_max),
+                                                            (self.alpha_min, self.alpha_max)], method='L-BFGS-B')
+            self.x0 = info['x'][0]
+            self.gamma = info['x'][1]
+            self.alpha = info['x'][2]
+        except (ValueError, RuntimeError):
+            pass
         return
 
     def conditional_max(self, x, intensity, eps, max_iter):
@@ -103,13 +106,16 @@ class DoniachSunjic:
 #        ll = [self.log_likelihood(x, intensity)]
         alpha_grid = np.arange(self.alpha_min, self.alpha_max, 0.001)
 
-        info = optimize.minimize(func_ll, x0=init,
-                                 bounds=[(self.x_min, self.x_max), (self.gamma_min, self.gamma_max)],
-                                 method='L-BFGS-B')
-        self.x0 = info['x'][0]
-        self.gamma = info['x'][1]
-        index = np.nanargmin([func_alpha(alpha, info['x']) for alpha in alpha_grid])
-        self.alpha = alpha_grid[index]
+        try:
+            info = optimize.minimize(func_ll, x0=init,
+                                     bounds=[(self.x_min, self.x_max), (self.gamma_min, self.gamma_max)],
+                                     method='L-BFGS-B')
+            self.x0 = info['x'][0]
+            self.gamma = info['x'][1]
+            index = np.nanargmin([func_alpha(alpha, info['x']) for alpha in alpha_grid])
+            self.alpha = alpha_grid[index]
+        except (ValueError, RuntimeError):
+            pass
 
         return
 

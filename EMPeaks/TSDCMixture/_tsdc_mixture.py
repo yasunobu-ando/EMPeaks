@@ -565,11 +565,6 @@ class TSDCMixtureModel(EMCore):
         for k in range(self.K):
             bnds.append([0.0, np.infty])
 
-        ls = optimize.minimize(loss, init_param,
-                               args=(T_bin, freq),
-                               bounds=bnds,
-                               method='L-BFGS-B'
-                               )
         try:
             ls = optimize.minimize(loss, init_param,
                                         args=(T_bin, freq),
@@ -670,8 +665,13 @@ class TSDCMixtureModel(EMCore):
                     print("")
                 return tmp_param, run_info
 
-            with concurrent.futures.ThreadPoolExecutor() as executor:
-                results = list(executor.map(_run_tsdc_trial, range(trial)))
+            from EMPeaks.EMCore._backend import get_backend
+            if get_backend() == "rust":
+                with concurrent.futures.ThreadPoolExecutor(max_workers=min(trial, 8)) as executor:
+                    results = list(executor.map(_run_tsdc_trial, range(trial)))
+            else:
+                # 純粋なPython実装の場合、GILの競合によりThreadPoolExecutorがハングアップするため直列実行する
+                results = [_run_tsdc_trial(i) for i in range(trial)]
             
             for res in results:
                 tmp_param = res[0]

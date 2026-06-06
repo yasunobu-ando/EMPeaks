@@ -36,7 +36,7 @@ def run_benchmark():
 
     results = []
 
-    trial = 100
+    trial = 50
     max_iter = 100 # limit max iter so it doesn't take too long for python
 
     for name, (model, data_x, data_y) in models.items():

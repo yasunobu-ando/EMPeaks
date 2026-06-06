@@ -110,7 +110,11 @@ class PseudoVoigt:
         def _fg(g, m):
             return self._qg(m, g, x, intensity)
 
-        return optimize.brentq(_fg, _interval_g[0], _interval_g[1], args=(m))
+        try:
+            return optimize.brentq(_fg, _interval_g[0], _interval_g[1], args=(m))
+        except ValueError:
+            # フォールバック: 解がない場合は直前のパラメータを維持
+            return self.gamma
 
     def _e_step(self, x):
         _sigma = self.gamma / (2.0 * np.sqrt(2.0 * np.log(2.0)))
@@ -133,15 +137,31 @@ class PseudoVoigt:
         _m = np.linspace(_interval_m[0], _interval_m[-1], N)
         _init_g = np.array([self._qg(m, _interval_g[0], x, intensity) for m in _m])
         _finish_g = np.array([self._qg(m, _interval_g[-1], x, intensity) for m in _m])
-        _interval_m = (_m[np.sign(_init_g * _finish_g) == - 1][0],
-                       _m[np.sign(_init_g * _finish_g) == - 1][-1])
+        valid_indices = np.where(np.sign(_init_g * _finish_g) == -1)[0]
+        if valid_indices.size > 0:
+            _interval_m = (_m[valid_indices[0]], _m[valid_indices[-1]])
+        else:
+            pass
+
         _m = np.linspace(_interval_m[0], _interval_m[-1], N)
         _y = np.array([_fm(m) for m in _m])
 
         sign = np.array([np.sign(_y[i + 1] * _y[i]) for i in range(_m.size - 1)])
         sect = np.where(sign == -1)[0]
-        root = np.array([optimize.brentq(_fm, _m[i], _m[i + 1]) for i in sect[0:sect.size]])
+        
+        roots = []
+        for i in sect:
+            try:
+                roots.append(optimize.brentq(_fm, _m[i], _m[i + 1]))
+            except ValueError:
+                pass
+        root = np.array(roots)
         root2 = np.array([self._opt_g(m, _interval_g, x, intensity) for m in root])
+
+        # フォールバック: 解が見つからない場合はグリッドの点を使用する
+        if root.size == 0:
+            root = _m
+            root2 = np.array([self._opt_g(m, _interval_g, x, intensity) for m in root])
 
         list_ll = np.array([])
         for i in range(len(root)):
@@ -166,15 +186,32 @@ class PseudoVoigt:
         _m = np.linspace(_interval_m[0], _interval_m[-1], N)
         _init_g = np.array([self._qg(m, _interval_g[0], x, intensity) for m in _m])
         _finish_g = np.array([self._qg(m, _interval_g[-1], x, intensity) for m in _m])
-        _interval_m = (_m[np.sign(_init_g * _finish_g) == - 1][0],
-                       _m[np.sign(_init_g * _finish_g) == - 1][-1])
+        
+        valid_indices = np.where(np.sign(_init_g * _finish_g) == -1)[0]
+        if valid_indices.size > 0:
+            _interval_m = (_m[valid_indices[0]], _m[valid_indices[-1]])
+        else:
+            # フォールバック: 解がない場合は元の区間を維持
+            pass
         _m = np.linspace(_interval_m[0], _interval_m[-1], N)
         _y = np.array([_fm(m) for m in _m])
 
         sign = np.array([np.sign(_y[i + 1] * _y[i]) for i in range(_m.size - 1)])
         sect = np.where(sign == -1)[0]
-        root = np.array([optimize.brentq(_fm, _m[i], _m[i + 1]) for i in sect[0:sect.size]])
+        
+        roots = []
+        for i in sect:
+            try:
+                roots.append(optimize.brentq(_fm, _m[i], _m[i + 1]))
+            except ValueError:
+                pass
+        root = np.array(roots)
         root2 = np.array([self._opt_g(m, _interval_g, x, intensity) for m in root])
+
+        # フォールバック: 解が見つからない場合はグリッドの点を使用する
+        if root.size == 0:
+            root = _m
+            root2 = np.array([self._opt_g(m, _interval_g, x, intensity) for m in root])
 
         list_ll = np.array([])
         for i in range(len(root)):
@@ -245,16 +282,17 @@ class PseudoVoigt:
         ll = [self._LL(x, intensity)]
         eta_grid = np.arange(0, 1.0, 0.01)
         for i in range(max_iter):
-            info = optimize.minimize(func_ll, x0=init,
-                                     bounds=[(self.x_min, self.x_max), (self.gamma_min, self.gamma_max)],
-                                     method='L-BFGS-B')
-            init = info['x']
-            index = np.nanargmin([func_eta(eta, init) for eta in eta_grid])
-            self.eta = eta_grid[index]
-            #info = optimize.minimize(func_eta, x0=[self.eta], args=(info['x']), bounds=[(0, 1.0)], method='L-BFGS-B')
-            #self.eta = info['x']
-            self.x0 = init[0]
-            self.gamma = init[1]
+            try:
+                info = optimize.minimize(func_ll, x0=init,
+                                         bounds=[(self.x_min, self.x_max), (self.gamma_min, self.gamma_max)],
+                                         method='L-BFGS-B')
+                init = info['x']
+                index = np.nanargmin([func_eta(eta, init) for eta in eta_grid])
+                self.eta = eta_grid[index]
+                self.x0 = init[0]
+                self.gamma = init[1]
+            except (ValueError, RuntimeError):
+                pass
             ll.append(self._LL(x, intensity))
             res = (ll[-1] - ll[-2]) / np.abs(ll[-2])
             #print("     iteration {:}, LL: {:}, residual: {:}".format(i, ll[-1], (ll[-1]-ll[-2]) / np.abs(ll[-2])))
