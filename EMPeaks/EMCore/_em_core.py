@@ -383,6 +383,70 @@ class EMCore:
         return
 
     def adapted_em(self, x, intensity, max_iter, r_eps, stdout):
+        from EMPeaks.EMCore._backend import get_backend
+        if get_backend() == "rust" and self.background == "none":
+            return self._adapted_em_rust(x, intensity, max_iter, r_eps, stdout)
+        return self._adapted_em_python(x, intensity, max_iter, r_eps, stdout)
+
+    def _adapted_em_rust(self, x, intensity, max_iter, r_eps, stdout):
+        import empeaks_rust_core
+
+        start = time.time()
+        print("<< Start fitting via Adapted EM Algorithm. [Rust backend] >>")
+
+        mu    = np.array([self.model[k].mu    for k in range(self.K)], dtype=np.float64)
+        sigma = np.array([self.model[k].sigma for k in range(self.K)], dtype=np.float64)
+        pi    = self.pi.astype(np.float64).copy()
+        da    = self.Dirichlet_alpha.astype(np.float64).copy()
+
+        total_iter, ll_hist, res_hist = empeaks_rust_core.run_em_loop(
+            x.astype(np.float64), intensity.astype(np.float64),
+            mu, sigma, pi, da, max_iter, r_eps,
+        )
+
+        # 結果を Python 側モデルに反映
+        for k in range(self.K):
+            self.model[k].mu    = mu[k]
+            self.model[k].sigma = sigma[k]
+        self.pi = pi
+
+        t_tot = time.time() - start
+        ll = float(ll_hist[-1]) if len(ll_hist) > 0 else float('nan')
+        residual = float(res_hist[-1]) if len(res_hist) > 0 else float('nan')
+
+        converged = total_iter < max_iter
+        if converged:
+            print('Convergence is achieved at iter. {:3d}, elapsed time {:5.2f} s'
+                  .format(total_iter, t_tot))
+            print('   LogLikelihood:     {:12.8e}\n'
+                  '        residual:      {:12.8e}'.format(ll, residual))
+        else:
+            print('>>> Convergence is not achieved within {:3d} iterations, '
+                  'elapsed time: {:5.2f} s'.format(max_iter, t_tot))
+            print('   LogLikelihood:      {:12.8e}\n'
+                  '        residual:       {:12.8e}'.format(ll, residual))
+
+        rmse = self.leastsq_for_normalization_factor(x, intensity, stdout)
+        param = self.export_param()
+
+        run_info = {
+            'total_iter': total_iter,
+            'total_time': t_tot,
+            'time/iter': t_tot / max(total_iter, 1),
+            'LL': ll,
+            'LL_hist': list(ll_hist),
+            'LL_residual': residual,
+            'LL_residual_hist': list(res_hist),
+            'RMSE': rmse,
+        }
+        if stdout:
+            print('Estimated model parameters and scores are following:')
+            self.print_param_summary(param)
+            print('   LL:      {:12.8e}\n'
+                  '   RMSE:     {:12.8e}\n'.format(run_info['LL'], run_info['RMSE']))
+        return run_info
+
+    def _adapted_em_python(self, x, intensity, max_iter, r_eps, stdout):
         start = time.time()
         it_tot = 0
         t_tot = 0
@@ -438,8 +502,6 @@ class EMCore:
                   '        residual:       {:12.8e}'.format(ll, residual))
 
         rmse = self.leastsq_for_normalization_factor(x, intensity, stdout)
-        # self.N_tot = np.sum(intensity)
-        # rmse = np.sqrt(np.average((intensity - self.predict(x) * self.N_tot)**2))
         param = self.export_param()
 
         run_info = {
