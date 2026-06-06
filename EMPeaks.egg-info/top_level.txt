@@ -1,3 +1,0 @@
-EMPeaks
-cli
-gui
