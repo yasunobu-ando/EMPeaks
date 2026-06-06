@@ -1,0 +1,2 @@
+[console_scripts]
+empeaks = cli.main:main

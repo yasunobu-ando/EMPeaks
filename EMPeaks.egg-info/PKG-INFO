@@ -1,4 +1,4 @@
-Metadata-Version: 2.4
+Metadata-Version: 2.1
 Name: EMPeaks
 Version: 2.1.0
 Summary: 'high-throughput spectrum peak modeling tools by using Spectrum adapted EM algorithms'
@@ -10,7 +10,13 @@ Classifier: Operating System :: OS Independent
 Requires-Python: >=3.8
 Description-Content-Type: text/markdown
 License-File: LICENSE
-Dynamic: license-file
+Requires-Dist: numpy>=1.21.6
+Requires-Dist: scipy>=1.7.3
+Requires-Dist: matplotlib>=3.5.3
+Requires-Dist: pandas>=1.2.3
+Requires-Dist: streamlit>=1.28.0
+Requires-Dist: streamlit-aggrid>=0.3.3
+Requires-Dist: openpyxl>=3.0.0
 
 EMPeaks
 ========================
