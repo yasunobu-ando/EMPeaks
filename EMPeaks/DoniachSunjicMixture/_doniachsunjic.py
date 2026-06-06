@@ -6,7 +6,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from scipy import optimize
 from scipy.special import gamma
-from scipy.integrate import trapz
+from scipy.integrate import trapezoid as trapz
 
 
 class DoniachSunjic:

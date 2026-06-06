@@ -42,7 +42,7 @@ class Lorentzian:
 
     def predict(self, x):
         prob = 1.0/(np.pi * self._Z()) * (1.0 * self.gamma)/((x-self.x0)**2 + (0.50 * self.gamma)**2)
-        return prob / integrate.trapz(prob, x)
+        return prob / integrate.trapezoid(prob, x)
 
     def log_likelihood(self, x, intensity):
         return np.sum(intensity * np.log(self.predict(x) + 1e-200))
@@ -150,13 +150,13 @@ class Lorentzian:
             self.gamma = _opt_gamma[i]
             _LL.append(self.log_likelihood(x, intensity))
 
-        if len(_opt_x0) is 0:
+        if len(_opt_x0) == 0:
             print("Maximum likelihood estimation is failed.")
             print("Reset parameters again.")
             self.x0 = np.random.uniform(self.x_min, self.x_max)
             self.gamma = np.random.uniform(self.gamma_min, self.gamma_max)
             return
-        elif len(_opt_x0) is not 1:
+        elif len(_opt_x0) != 1:
             print("More than one local minima are found as follows.")
             print(_opt_x0)
 

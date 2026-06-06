@@ -68,6 +68,7 @@ EMPeaks.egg-info/PKG-INFO
 EMPeaks.egg-info/SOURCES.txt
 EMPeaks.egg-info/dependency_links.txt
 EMPeaks.egg-info/entry_points.txt
+EMPeaks.egg-info/requires.txt
 EMPeaks.egg-info/top_level.txt
 EMPeaks/Background/__init__.py
 EMPeaks/Background/_background.py

@@ -499,7 +499,7 @@ class EMCore:
         def residual(param, x, y):
             return y - model(x, param)
 
-        init_param = np.abs(integrate.trapz(intensity, x))
+        init_param = np.abs(integrate.trapezoid(intensity, x))
         print('init', init_param)
 
         start = time.time()
@@ -551,7 +551,7 @@ class EMCore:
         init_param = np.zeros(2 * self.K + self.K_all)
         init_param[0:self.K] = [self.model[k].x0 for k in range(self.K)]
         init_param[self.K:2 * self.K] = [self.model[k].gamma for k in range(self.K)]
-        init_param[2 * self.K:2 * self.K + self.K_all] = self.pi * integrate.trapz(intensity, x)
+        init_param[2 * self.K:2 * self.K + self.K_all] = self.pi * integrate.trapezoid(intensity, x)
 
         start = time.time()
         lb = [self.x_min for i in range(self.K)]
@@ -634,7 +634,7 @@ class EMCore:
 #
 #     def predict(self, x):
 #         p = np.sum([self.peak_model.pi[k] * self.peak_model.model[k].cdf(x) for k in range(self.K)], axis=0)
-#         z = integrate.trapz(p, x)
+#         z = integrate.trapezoid(p, x)
 #         return p/z
 #
 #     def _LL(self, x, weight):

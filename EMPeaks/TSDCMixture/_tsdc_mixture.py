@@ -163,7 +163,7 @@ class TSDCMixtureModel(EMCore):
         init_param = np.zeros(2*self.K + self.K_all)
         init_param[0:self.K] = [self.model[k].Tp[0] for k in range(self.K)]
         init_param[self.K:2*self.K] = [self.model[k].Ea for k in range(self.K)]
-        init_param[2*self.K:2*self.K + self.K_all] = self.pi * integrate.trapz(intensity, T)/self.beta
+        init_param[2*self.K:2*self.K + self.K_all] = self.pi * integrate.trapezoid(intensity, T)/self.beta
 
         start = time.time()
         lb = [self.T_min for i in range(self.K)]
@@ -263,7 +263,7 @@ class TSDCMixtureModel(EMCore):
         init_param = np.zeros(2 * self.K + self.K_all)
         init_param[0:self.K] = [self.model[k].tau0 for k in range(self.K)]
         init_param[self.K:2 * self.K] = [self.model[k].Ea for k in range(self.K)]
-        init_param[2 * self.K:2 * self.K + self.K_all] = self.pi * integrate.trapz(intensity, T) / self.beta
+        init_param[2 * self.K:2 * self.K + self.K_all] = self.pi * integrate.trapezoid(intensity, T) / self.beta
 
         start = time.time()
         lb = [1.0e-20 for i in range(self.K)]
@@ -356,7 +356,7 @@ class TSDCMixtureModel(EMCore):
         init_param = np.zeros(2*self.K + self.K_all)
         init_param[0:self.K] = [self.model[k].Tp for k in range(self.K)]
         init_param[self.K:2*self.K] = [self.model[k].Ea for k in range(self.K)]
-        init_param[2*self.K:2*self.K + self.K_all] = self.pi * integrate.trapz(intensity, T)/self.beta
+        init_param[2*self.K:2*self.K + self.K_all] = self.pi * integrate.trapezoid(intensity, T)/self.beta
 
         start = time.time()
         lb = [self.T_min for i in range(self.K)]
@@ -458,7 +458,7 @@ class TSDCMixtureModel(EMCore):
         init_param = np.zeros(2*self.K + self.K_all)
         init_param[0:self.K] = [self.model[k].Tp for k in range(self.K)]
         init_param[self.K:2*self.K] = [self.model[k].Ea for k in range(self.K)]
-        init_param[2*self.K:2*self.K + self.K_all] = self.pi * integrate.trapz(intensity, T)/self.beta
+        init_param[2*self.K:2*self.K + self.K_all] = self.pi * integrate.trapezoid(intensity, T)/self.beta
 
         start = time.time()
         lb = [self.T_min for i in range(self.K)]
