@@ -112,18 +112,7 @@ class PseudoVoigtMixtureModel(EMCore):
                   '   RMSE:     {:12.8e}\n'.format(run_info['LL'], run_info['RMSE']))
         return run_info
 
-    def set_param(self, **param):
-        """
-        """
-        if not param:
-            return self
 
-        param_keys = set(param.keys())
-        org_K = self.K
-        if param_keys >= {'K'}:
-            self.K = param['K']
-        else:
-            param['K'] = self.K
 
     def set_single_params(self, **param):
         # setting parameters for each single Gaussian model.
