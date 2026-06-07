@@ -9,6 +9,7 @@ mod pseudo_voigt;
 mod lorentzian;
 mod doniach_sunjic;
 mod tsdc;
+mod voigt;
 mod background;
 
 
@@ -429,10 +430,71 @@ fn run_tsdc_em_loop<'py>(
     Ok((total_iter, ll_py, res_py, s_tri_out))
 }
 
+/// run_voigt_em_loop(x, intensity, x0, sigma_v, gamma_v, pi, dirichlet_alpha,
+///                   fix_x0, fix_sigma, fix_gamma,
+///                   x_min, x_max, sigma_min, sigma_max, gamma_min, gamma_max,
+///                   max_iter, r_eps, bg_type=0, s_tri=0.0)
+///
+/// Full Voigt EM loop in Rust. x0/sigma_v/gamma_v/pi updated in-place.
+/// fix_x0/fix_sigma/fix_gamma: bool vectors of length K.
+/// Returns (total_iter, ll_hist, residual_hist, s_tri_out).
+#[pyfunction]
+#[pyo3(signature = (x, intensity, x0, sigma_v, gamma_v, pi, dirichlet_alpha,
+                    fix_x0, fix_sigma, fix_gamma,
+                    x_min, x_max, sigma_min, sigma_max, gamma_min, gamma_max,
+                    max_iter, r_eps, bg_type=0u8, s_tri=0.0f64))]
+fn run_voigt_em_loop<'py>(
+    py: Python<'py>,
+    x: PyReadonlyArray1<'py, f64>,
+    intensity: PyReadonlyArray1<'py, f64>,
+    mut x0: PyReadwriteArray1<'py, f64>,
+    mut sigma_v: PyReadwriteArray1<'py, f64>,
+    mut gamma_v: PyReadwriteArray1<'py, f64>,
+    mut pi: PyReadwriteArray1<'py, f64>,
+    dirichlet_alpha: PyReadonlyArray1<'py, f64>,
+    fix_x0: Vec<bool>,
+    fix_sigma: Vec<bool>,
+    fix_gamma: Vec<bool>,
+    x_min: f64, x_max: f64,
+    sigma_min: f64, sigma_max: f64,
+    gamma_min: f64, gamma_max: f64,
+    max_iter: usize, r_eps: f64,
+    bg_type: u8, s_tri: f64,
+) -> PyResult<(usize, PyObject, PyObject, f64)> {
+    let x_vec = x.as_array().to_vec();
+    let int_vec = intensity.as_array().to_vec();
+    let da_vec = dirichlet_alpha.as_array().to_vec();
+
+    let mut x0_vec = x0.as_array().to_vec();
+    let mut sig_vec = sigma_v.as_array().to_vec();
+    let mut gam_vec = gamma_v.as_array().to_vec();
+    let mut pi_vec = pi.as_array().to_vec();
+
+    let (total_iter, ll_hist, res_hist, s_tri_out) = py.allow_threads(|| {
+        em_engine::run_voigt_em_loop(
+            &x_vec, &int_vec,
+            &mut x0_vec, &mut sig_vec, &mut gam_vec, &mut pi_vec,
+            &da_vec, &fix_x0, &fix_sigma, &fix_gamma,
+            x_min, x_max, sigma_min, sigma_max, gamma_min, gamma_max,
+            max_iter, r_eps, bg_type, s_tri,
+        )
+    });
+
+    x0.as_array_mut().iter_mut().zip(x0_vec.iter()).for_each(|(d, &s)| *d = s);
+    sigma_v.as_array_mut().iter_mut().zip(sig_vec.iter()).for_each(|(d, &s)| *d = s);
+    gamma_v.as_array_mut().iter_mut().zip(gam_vec.iter()).for_each(|(d, &s)| *d = s);
+    pi.as_array_mut().iter_mut().zip(pi_vec.iter()).for_each(|(d, &s)| *d = s);
+
+    let ll_py  = Array1::from_vec(ll_hist).into_pyarray_bound(py).into();
+    let res_py = Array1::from_vec(res_hist).into_pyarray_bound(py).into();
+    Ok((total_iter, ll_py, res_py, s_tri_out))
+}
+
 #[pymodule]
 fn empeaks_rust_core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(run_em_loop, m)?)?;
     m.add_function(wrap_pyfunction!(run_pv_em_loop, m)?)?;
+    m.add_function(wrap_pyfunction!(run_voigt_em_loop, m)?)?;
     m.add_function(wrap_pyfunction!(run_lorentzian_em_loop, m)?)?;
     m.add_function(wrap_pyfunction!(run_ds_em_loop, m)?)?;
     m.add_function(wrap_pyfunction!(run_tsdc_em_loop, m)?)?;

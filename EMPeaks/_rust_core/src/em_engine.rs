@@ -5,6 +5,7 @@ use crate::pseudo_voigt;
 use crate::lorentzian;
 use crate::doniach_sunjic;
 use crate::tsdc;
+use crate::voigt;
 use crate::background;
 
 // ---------------------------------------------------------------------------
@@ -420,6 +421,94 @@ pub fn run_tsdc_em_loop(
         });
         update_predictions_with_bg_inplace(&mut predictions, k_peaks, bg_type, t, t_min, t_max, s_tri);
         let ll = em_gamma_ll::compute_gamma_and_ll_inplace(intensity, &predictions, pi, &mut mixture, &mut gamma);
+
+        let residual = (ll - ll_0) / ll_0.abs();
+        ll_hist.push(ll);
+        res_hist.push(residual);
+
+        if residual.abs() < r_eps {
+            total_iter = it + 1;
+            break;
+        }
+        ll_0 = ll;
+        let _ = it;
+    }
+
+    (total_iter, ll_hist, res_hist, s_tri)
+}
+
+/// Voigt 専用 EM ループ（fix_ フラグ対応）
+///
+/// sigma_v: Gaussian σ パラメータ
+/// gamma_v: Lorentzian γ パラメータ
+/// fix_x0 / fix_sigma / fix_gamma: 各ピークの固定フラグ（長さ K）
+/// Returns (total_iter, ll_hist, res_hist, s_tri)
+pub fn run_voigt_em_loop(
+    x: &[f64],
+    intensity: &[f64],
+    x0: &mut Vec<f64>,
+    sigma_v: &mut Vec<f64>,
+    gamma_v: &mut Vec<f64>,
+    pi: &mut Vec<f64>,
+    dirichlet_alpha: &[f64],
+    fix_x0: &[bool],
+    fix_sigma: &[bool],
+    fix_gamma: &[bool],
+    x_min: f64, x_max: f64,
+    sigma_min: f64, sigma_max: f64,
+    gamma_min: f64, gamma_max: f64,
+    max_iter: usize,
+    r_eps: f64,
+    bg_type: u8,
+    mut s_tri: f64,
+) -> (usize, Vec<f64>, Vec<f64>, f64) {
+    let k_peaks = x0.len();
+    let k_all = k_peaks + if bg_type != background::BG_NONE { 1 } else { 0 };
+    let mut predictions = vec![vec![0.0; x.len()]; k_all];
+    let mut mixture = vec![0.0; x.len()];
+    let mut gamma = vec![vec![0.0; x.len()]; k_all];
+
+    predictions[0..k_peaks].par_iter_mut().enumerate().for_each(|(k, pred)| {
+        voigt::predict_inplace(x, x0[k], sigma_v[k], gamma_v[k], x_min, x_max, pred);
+    });
+    update_predictions_with_bg_inplace(&mut predictions, k_peaks, bg_type, x, x_min, x_max, s_tri);
+    let mut ll_0 = em_gamma_ll::compute_gamma_and_ll_inplace(
+        intensity, &predictions, pi, &mut mixture, &mut gamma);
+
+    let mut ll_hist = vec![ll_0];
+    let mut res_hist = vec![0.0_f64];
+    let mut total_iter = max_iter;
+
+    for it in 0..max_iter {
+        em_gamma_ll::update_pi(pi, intensity, &gamma, dirichlet_alpha);
+
+        let results: Vec<(f64, f64, f64)> = (0..k_peaks).into_par_iter().map(|k| {
+            let w: Vec<f64> = intensity.iter().zip(gamma[k].iter())
+                .map(|(&i, &g)| i * g).collect();
+            let (mut x0_k, mut sig_k, mut gam_k) = (x0[k], sigma_v[k], gamma_v[k]);
+            voigt::mle_voigt(
+                x, &w, &mut x0_k, &mut sig_k, &mut gam_k,
+                fix_x0[k], fix_sigma[k], fix_gamma[k],
+                x_min, x_max, sigma_min, sigma_max, gamma_min, gamma_max,
+            );
+            (x0_k, sig_k, gam_k)
+        }).collect();
+        for (k, (x0_k, sig_k, gam_k)) in results.into_iter().enumerate() {
+            x0[k] = x0_k; sigma_v[k] = sig_k; gamma_v[k] = gam_k;
+        }
+
+        if bg_type == background::BG_LINEAR {
+            let w_bg: Vec<f64> = intensity.iter().zip(gamma[k_peaks].iter())
+                .map(|(&i, &g)| i * g).collect();
+            s_tri = background::mle_linear(x, &w_bg, x_min, x_max);
+        }
+
+        predictions[0..k_peaks].par_iter_mut().enumerate().for_each(|(k, pred)| {
+            voigt::predict_inplace(x, x0[k], sigma_v[k], gamma_v[k], x_min, x_max, pred);
+        });
+        update_predictions_with_bg_inplace(&mut predictions, k_peaks, bg_type, x, x_min, x_max, s_tri);
+        let ll = em_gamma_ll::compute_gamma_and_ll_inplace(
+            intensity, &predictions, pi, &mut mixture, &mut gamma);
 
         let residual = (ll - ll_0) / ll_0.abs();
         ll_hist.push(ll);
