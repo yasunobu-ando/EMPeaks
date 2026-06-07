@@ -264,6 +264,11 @@ class EMCore:
             info = self.adapted_em(x, intensity, max_iter, r_eps, stdout)
             return info
 
+        elif method == 'deterministic_annealing':
+            info = self.deterministic_annealing(x, intensity, stdout=stdout,
+                                                max_iter=max_iter, r_eps=r_eps)
+            return info
+
         elif method == 'smart':
             print('Start smart fitting process.')
             print('>>> Step 1: Sampling {:3d} trials with low threshold of 1.0e-6.'.format(trial))
@@ -291,7 +296,7 @@ class EMCore:
         hist_model = []
         hist_run_info = []
 
-        if get_backend() == "rust" and method in ['adapted_em', 'smart']:
+        if get_backend() == "rust" and method in ['adapted_em', 'smart', 'deterministic_annealing']:
             import concurrent.futures
             def _run_trial(i):
                 model_copy = copy.deepcopy(self)
@@ -385,15 +390,23 @@ class EMCore:
             hist_model.append(tmp_param)
             hist_run_info.append(run_info)
 
-        hist_LL = np.array([hist_run_info[i]['LL'] for i in range(n_temp)])
+        hist_LL   = np.array([hist_run_info[i]['LL']          for i in range(n_temp)])
+        hist_RMSE = np.array([hist_run_info[i]['RMSE']        for i in range(n_temp)])
+        hist_time = np.array([hist_run_info[i]['total_time']  for i in range(n_temp)])
+        hist_iter = np.array([hist_run_info[i]['total_iter']  for i in range(n_temp)])
 
         print('Deterministic Annealing with {:3d} temperature stage is finished.'.format(n_temp))
         print()
-        info = {'LL_hist': hist_LL,
-                'RMSE_hist': np.array([hist_run_info[i]['RMSE'] for i in range(n_temp)]),
-                'time_hist': np.array([hist_run_info[i]['total_time'] for i in range(n_temp)]),
-                'iter_hist': np.array([hist_run_info[i]['total_iter'] for i in range(n_temp)])
-                }
+        info = {
+            'LL':         float(hist_LL[-1]),
+            'RMSE':       float(hist_RMSE[-1]),
+            'total_time': float(np.sum(hist_time)),
+            'total_iter': int(np.sum(hist_iter)),
+            'LL_hist':    hist_LL,
+            'RMSE_hist':  hist_RMSE,
+            'time_hist':  hist_time,
+            'iter_hist':  hist_iter,
+        }
         tmp = self.pi[0:self.K]
         K_non_zero = tmp[tmp>0].size
         print("number of non zero components of spectrum is {} in {}".format(K_non_zero, self.K))
