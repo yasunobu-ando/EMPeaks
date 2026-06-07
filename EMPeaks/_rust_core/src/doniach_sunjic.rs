@@ -52,13 +52,16 @@ fn ll_ds(x: &[f64], intensity: &[f64], x0: f64, gamma: f64, alpha: f64) -> f64 {
 }
 
 // MLE via L-BFGS-B on (x0, gamma, alpha): matches Python full_optimization
-// Initial x0/gamma/alpha are used as-is (no empirical reset — matches Python)
+// fix_x0/fix_gamma/fix_alpha: skip optimizing those parameters.
 pub fn mle_doniach_sunjic(
     x: &[f64],
     intensity: &[f64],
     x0: &mut f64,
     gamma: &mut f64,
     alpha: &mut f64,
+    fix_x0: bool,
+    fix_gamma: bool,
+    fix_alpha: bool,
     x_min: f64,
     x_max: f64,
     gamma_min: f64,
@@ -66,37 +69,47 @@ pub fn mle_doniach_sunjic(
     alpha_min: f64,
     alpha_max: f64,
 ) {
+    if fix_x0 && fix_gamma && fix_alpha { return; }
+
     let sum_w: f64 = intensity.iter().sum();
-    if sum_w < 1e-300 {
-        return;
-    }
+    if sum_w < 1e-300 { return; }
 
     let x_s = x.to_vec();
     let w_s = intensity.to_vec();
     let eps = 1e-7_f64;
+    let x0_fixed = *x0;
+    let gamma_fixed = *gamma;
+    let alpha_fixed = *alpha;
 
-    let bounds = vec![
-        (x_min, x_max),
-        (gamma_min, gamma_max),
-        (alpha_min, alpha_max),
-    ];
-    let init = vec![*x0, *gamma, *alpha];
+    let mut init = Vec::new();
+    let mut bounds = Vec::new();
+    if !fix_x0    { init.push(*x0);    bounds.push((x_min, x_max)); }
+    if !fix_gamma { init.push(*gamma); bounds.push((gamma_min, gamma_max)); }
+    if !fix_alpha { init.push(*alpha); bounds.push((alpha_min, alpha_max)); }
+
+    let unpack = move |p: &[f64]| -> (f64, f64, f64) {
+        let mut idx = 0;
+        let x0_v  = if fix_x0    { x0_fixed }    else { let v = p[idx]; idx += 1; v };
+        let gam_v = if fix_gamma { gamma_fixed } else { let v = p[idx]; idx += 1; v };
+        let alp_v = if fix_alpha { alpha_fixed } else { let v = p[idx]; idx += 1; v };
+        (x0_v, gam_v, alp_v)
+    };
 
     if let Ok(state) = lbfgsb::lbfgsb(init, &bounds, |p, g| {
-        let x0_p = p[0];
-        let gam_p = p[1];
-        let alp_p = p[2];
-        let ll = ll_ds(&x_s, &w_s, x0_p, gam_p, alp_p);
-        let ll_x = ll_ds(&x_s, &w_s, x0_p + eps, gam_p, alp_p);
-        let ll_g = ll_ds(&x_s, &w_s, x0_p, gam_p + eps, alp_p);
-        let ll_a = ll_ds(&x_s, &w_s, x0_p, gam_p, alp_p + eps);
-        g[0] = -(ll_x - ll) / eps;
-        g[1] = -(ll_g - ll) / eps;
-        g[2] = -(ll_a - ll) / eps;
+        let (x0_v, gam_v, alp_v) = unpack(p);
+        let ll = ll_ds(&x_s, &w_s, x0_v, gam_v, alp_v);
+        for i in 0..p.len() {
+            let mut p_e = p.to_vec();
+            p_e[i] += eps;
+            let (x0_e, gam_e, alp_e) = unpack(&p_e);
+            let ll_e = ll_ds(&x_s, &w_s, x0_e, gam_e, alp_e);
+            g[i] = -(ll_e - ll) / eps;
+        }
         Ok(-ll)
     }) {
-        *x0 = state.x()[0];
-        *gamma = state.x()[1].clamp(gamma_min, gamma_max);
-        *alpha = state.x()[2].clamp(alpha_min, alpha_max);
+        let (x0_r, gam_r, alp_r) = unpack(state.x());
+        if !fix_x0    { *x0    = x0_r; }
+        if !fix_gamma { *gamma = gam_r.clamp(gamma_min, gamma_max); }
+        if !fix_alpha { *alpha = alp_r.clamp(alpha_min, alpha_max); }
     }
 }

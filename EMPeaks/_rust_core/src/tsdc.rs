@@ -84,20 +84,29 @@ pub fn mle_tsdc_find_root(
     ea: &mut f64,
     tau0: &mut f64,
     tp: &mut f64,
+    fix_ea: bool,
+    fix_tp: bool,
     ea_min: f64,
     ea_max: f64,
     beta: f64,
 ) -> Result<(), String> {
+    if fix_ea && fix_tp { return Ok(()); }
+    if fix_ea { return Ok(()); }  // root-finding is only for ea
+
     let f = |e: f64| -> f64 {
         f_g_diff(e, t, intensity, beta)
     };
-    
+
     let mut convergency = SimpleConvergency { eps: 1e-8, max_iter: 100 };
     match find_root_brent(ea_min, ea_max, &f, &mut convergency) {
         Ok(root_ea) => {
             *ea = root_ea;
             *tau0 = f_sum(root_ea, t, intensity) / (beta * intensity.iter().sum::<f64>());
-            *tp = get_tp(root_ea, *tau0, beta)?;
+            if !fix_tp {
+                *tp = get_tp(root_ea, *tau0, beta)?;
+            } else {
+                *tau0 = get_tau0(*tp, root_ea, beta);
+            }
             Ok(())
         },
         Err(e) => Err(format!("brentq failed: {:?}", e)),
@@ -110,51 +119,64 @@ pub fn mle_tsdc_lbfgsb(
     ea: &mut f64,
     tau0: &mut f64,
     tp: &mut f64,
+    fix_ea: bool,
+    fix_tp: bool,
     ea_min: f64,
     ea_max: f64,
     t_min: f64,
     t_max: f64,
     beta: f64,
 ) -> Result<(), String> {
+    if fix_ea && fix_tp { return Ok(()); }
+
     let sum_w: f64 = intensity.iter().sum();
-    if sum_w < 1e-300 {
-        return Ok(());
-    }
+    if sum_w < 1e-300 { return Ok(()); }
+
+    let ea_fixed = *ea;
+    let tp_fixed = *tp;
 
     let d1: f64 = sum_w;
     let d2: f64 = t.iter().zip(intensity.iter()).map(|(&ti, &yi)| yi / ti * INV_KB).sum();
 
-    let bounds = vec![
-        (ea_min, ea_max),
-        (t_min, t_max),
-    ];
-    let init = vec![*ea, *tp];
+    let mut init = Vec::new();
+    let mut bounds = Vec::new();
+    if !fix_ea { init.push(*ea); bounds.push((ea_min, ea_max)); }
+    if !fix_tp { init.push(*tp); bounds.push((t_min, t_max)); }
+
+    let unpack = move |p: &[f64]| -> (f64, f64) {
+        let mut idx = 0;
+        let ea_v = if fix_ea { ea_fixed } else { let v = p[idx]; idx += 1; v };
+        let tp_v = if fix_tp { tp_fixed } else { let v = p[idx]; idx += 1; v };
+        (ea_v, tp_v)
+    };
 
     let t_s = t.to_vec();
     let w_s = intensity.to_vec();
 
     if let Ok(state) = lbfgsb::lbfgsb(init, &bounds, |p, g| {
-        let ea_c = p[0];
-        let tp_c = p[1];
+        let (ea_c, tp_c) = unpack(p);
         let tau0_c = get_tau0(tp_c, ea_c, beta);
-        
+
         let beta_tau = beta * tau0_c;
         let ktp = KB * tp_c;
-        
+
         let d3: f64 = t_s.par_iter().zip(w_s.par_iter()).map(|(&ti, &yi)| yi * ti * expn(2, ea_c * INV_KB / ti)).sum();
         let d3_p: f64 = t_s.par_iter().zip(w_s.par_iter()).map(|(&ti, &yi)| -yi * INV_KB * expn(1, ea_c * INV_KB / ti)).sum();
-        
+
         let ll_e = (d1 - d3 / beta_tau) * (1.0 / ea_c + 1.0 / ktp) - d2 - d3_p / beta_tau;
         let ll_t = (-d1 + d3 / beta_tau) * (2.0 / tp_c + ea_c * INV_KB / (tp_c * tp_c));
-        
-        g[0] = -ll_e;
-        g[1] = -ll_t;
+
+        let mut gi = 0;
+        if !fix_ea { g[gi] = -ll_e; gi += 1; }
+        if !fix_tp { g[gi] = -ll_t; gi += 1; }
+        let _ = gi;
 
         let ll = ll_tsdc(&t_s, &w_s, ea_c, tau0_c, beta);
         Ok(-ll)
     }) {
-        *ea = state.x()[0].clamp(ea_min, ea_max);
-        *tp = state.x()[1].clamp(t_min, t_max);
+        let (ea_r, tp_r) = unpack(state.x());
+        if !fix_ea { *ea = ea_r.clamp(ea_min, ea_max); }
+        if !fix_tp { *tp = tp_r.clamp(t_min, t_max); }
         *tau0 = get_tau0(*tp, *ea, beta);
         Ok(())
     } else {

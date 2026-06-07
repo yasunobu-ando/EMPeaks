@@ -26,6 +26,8 @@ pub fn run_em_loop(
     sigma: &mut Vec<f64>,
     pi: &mut Vec<f64>,
     dirichlet_alpha: &[f64],
+    fix_mu: &[bool],
+    fix_sigma: &[bool],
     max_iter: usize,
     r_eps: f64,
     x_min: f64,
@@ -54,7 +56,7 @@ pub fn run_em_loop(
         let results: Vec<(f64, f64)> = (0..k_peaks).into_par_iter().map(|k| {
             let w: Vec<f64> = intensity.iter().zip(gamma[k].iter())
                 .map(|(&i, &g)| i * g).collect();
-            gaussian::mle(x, &w)
+            gaussian::mle(x, &w, mu[k], sigma[k], fix_mu[k], fix_sigma[k])
         }).collect();
         for (k, (new_mu, new_sigma)) in results.into_iter().enumerate() {
             mu[k] = new_mu;
@@ -121,6 +123,9 @@ pub fn run_pv_em_loop(
     eta: &mut Vec<f64>,
     pi: &mut Vec<f64>,
     dirichlet_alpha: &[f64],
+    fix_x0: &[bool],
+    fix_gamma: &[bool],
+    fix_eta: &[bool],
     use_full_opt: bool,
     x_min: f64,
     x_max: f64,
@@ -159,11 +164,14 @@ pub fn run_pv_em_loop(
             if use_full_opt {
                 pseudo_voigt::mle_full_optimization(
                     x, &w, &mut x0_k, &mut gam_k, &mut eta_k,
+                    fix_x0[k], fix_gamma[k], fix_eta[k],
                     x_min, x_max, gamma_min, gamma_max, max_iter, r_eps,
                 );
             } else {
                 pseudo_voigt::mle_conditional_max(
-                    x, &w, &mut x0_k, &mut gam_k, &mut eta_k, x_min, x_max,
+                    x, &w, &mut x0_k, &mut gam_k, &mut eta_k,
+                    fix_x0[k], fix_gamma[k], fix_eta[k],
+                    x_min, x_max,
                 );
             }
             (x0_k, gam_k, eta_k)
@@ -208,6 +216,8 @@ pub fn run_lorentzian_em_loop(
     gamma_lo: &mut Vec<f64>,
     pi: &mut Vec<f64>,
     dirichlet_alpha: &[f64],
+    fix_x0: &[bool],
+    fix_gamma: &[bool],
     x_min: f64,
     x_max: f64,
     max_iter: usize,
@@ -239,7 +249,7 @@ pub fn run_lorentzian_em_loop(
             let w: Vec<f64> = intensity.iter().zip(gamma[k].iter())
                 .map(|(&i, &g)| i * g).collect();
             let (mut x0_k, mut gam_k) = (x0[k], gamma_lo[k]);
-            lorentzian::mle_lorentzian(x, &w, &mut x0_k, &mut gam_k, x_min, x_max);
+            lorentzian::mle_lorentzian(x, &w, &mut x0_k, &mut gam_k, fix_x0[k], fix_gamma[k], x_min, x_max);
             (x0_k, gam_k)
         }).collect();
         for (k, (x0_k, gam_k)) in results.into_iter().enumerate() {
@@ -282,6 +292,9 @@ pub fn run_ds_em_loop(
     alpha: &mut Vec<f64>,
     pi: &mut Vec<f64>,
     dirichlet_alpha: &[f64],
+    fix_x0: &[bool],
+    fix_gamma: &[bool],
+    fix_alpha: &[bool],
     x_min: f64,
     x_max: f64,
     gamma_min: f64,
@@ -319,6 +332,7 @@ pub fn run_ds_em_loop(
             let (mut x0_k, mut gam_k, mut alp_k) = (x0[k], gamma_ds[k], alpha[k]);
             doniach_sunjic::mle_doniach_sunjic(
                 x, &w, &mut x0_k, &mut gam_k, &mut alp_k,
+                fix_x0[k], fix_gamma[k], fix_alpha[k],
                 x_min, x_max, gamma_min, gamma_max, alpha_min, alpha_max,
             );
             (x0_k, gam_k, alp_k)
@@ -363,6 +377,8 @@ pub fn run_tsdc_em_loop(
     tp: &mut Vec<f64>,
     pi: &mut Vec<f64>,
     dirichlet_alpha: &[f64],
+    fix_ea: &[bool],
+    fix_tp: &[bool],
     beta: f64,
     ea_min: f64,
     ea_max: f64,
@@ -399,12 +415,12 @@ pub fn run_tsdc_em_loop(
             if w.iter().sum::<f64>() < 1e-300 { continue; }
             let ok = tsdc::mle_tsdc_find_root(
                 t, &w, &mut ea[k], &mut tau0[k], &mut tp[k],
-                ea_min, ea_max, beta,
+                fix_ea[k], fix_tp[k], ea_min, ea_max, beta,
             );
             if ok.is_err() {
                 let _ = tsdc::mle_tsdc_lbfgsb(
                     t, &w, &mut ea[k], &mut tau0[k], &mut tp[k],
-                    ea_min, ea_max, t_min, t_max, beta,
+                    fix_ea[k], fix_tp[k], ea_min, ea_max, t_min, t_max, beta,
                 );
             }
         }
@@ -550,11 +566,16 @@ mod tests {
         let mut sigma = vec![1.0, 1.0];
         let mut pi    = vec![0.5, 0.5];
         let da        = vec![1.0, 1.0];
+        let fix_mu    = vec![false, false];
+        let fix_sigma = vec![false, false];
+        let x_min = x[0];
+        let x_max = *x.last().unwrap();
 
-        let (iters, ll_hist, _) = run_em_loop(
+        let (iters, ll_hist, _, _) = run_em_loop(
             &x, &intensity,
             &mut mu, &mut sigma, &mut pi,
-            &da, 3000, 1e-9,
+            &da, &fix_mu, &fix_sigma, 3000, 1e-9,
+            x_min, x_max, 0, 0.0,
         );
         assert!(iters < 3000, "did not converge within 3000 iters");
         assert!(ll_hist.last().unwrap() > ll_hist.first().unwrap(),

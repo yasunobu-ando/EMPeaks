@@ -16,15 +16,33 @@ pub fn predict(x: &[f64], mu: f64, sigma: f64) -> Vec<f64> {
     out
 }
 
-pub fn mle(x: &[f64], w: &[f64]) -> (f64, f64) {
+pub fn mle(
+    x: &[f64], w: &[f64],
+    mu_curr: f64, sigma_curr: f64,
+    fix_mu: bool, fix_sigma: bool,
+) -> (f64, f64) {
+    if fix_mu && fix_sigma { return (mu_curr, sigma_curr); }
+    if w.iter().sum::<f64>() < 1e-300 { return (mu_curr, sigma_curr); }
+
     let eps = 1e-100;
     let sum_w: f64 = w.iter().sum::<f64>() + eps;
-    let mu: f64 = x.iter().zip(w.iter()).map(|(&xi, &wi)| wi * xi).sum::<f64>() / sum_w;
-    let sigma2: f64 = x.iter().zip(w.iter())
-        .map(|(&xi, &wi)| wi * (xi - mu) * (xi - mu))
-        .sum::<f64>() / sum_w;
-    let sigma = if sigma2 > 0.0 { sigma2.sqrt() } else { 1e-5_f64 };
-    (mu, sigma.max(1e-5))
+
+    let mu = if fix_mu {
+        mu_curr
+    } else {
+        x.iter().zip(w.iter()).map(|(&xi, &wi)| wi * xi).sum::<f64>() / sum_w
+    };
+
+    let sigma = if fix_sigma {
+        sigma_curr
+    } else {
+        let sigma2: f64 = x.iter().zip(w.iter())
+            .map(|(&xi, &wi)| wi * (xi - mu) * (xi - mu))
+            .sum::<f64>() / sum_w;
+        (if sigma2 > 0.0 { sigma2.sqrt() } else { 1e-5_f64 }).max(1e-5)
+    };
+
+    (mu, sigma)
 }
 
 #[cfg(test)]
@@ -50,7 +68,7 @@ mod tests {
         let mu_true = 1.0_f64;
         let sigma_true = 0.8_f64;
         let w = predict(&x, mu_true, sigma_true);
-        let (mu_est, sigma_est) = mle(&x, &w);
+        let (mu_est, sigma_est) = mle(&x, &w, 0.0, 1.0, false, false);
         assert!((mu_est - mu_true).abs() < 1e-3, "mu_est = {}", mu_est);
         assert!((sigma_est - sigma_true).abs() < 1e-3, "sigma_est = {}", sigma_est);
     }

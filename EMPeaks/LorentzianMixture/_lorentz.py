@@ -13,6 +13,8 @@ class Lorentzian:
         self.x_max = x_max
         self.gamma_min = gamma_min
         self.gamma_max = gamma_max
+        self.fix_x0 = False
+        self.fix_gamma = False
         self.init_model()
 
     def set_param(self, **param):

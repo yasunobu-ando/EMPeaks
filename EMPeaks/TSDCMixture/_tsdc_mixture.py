@@ -63,6 +63,8 @@ class TSDCMixtureModel(EMCore):
         tp_arr = np.array([float(np.squeeze(self.model[k].Tp)) for k in range(self.K)], dtype=np.float64)
         pi_arr = np.array(self.pi[:self.K_all], dtype=np.float64)
         da_arr = np.ascontiguousarray(self.Dirichlet_alpha[:self.K_all], dtype=np.float64)
+        fix_ea = [bool(getattr(self.model[k], 'fix_Ea', False)) for k in range(self.K)]
+        fix_tp = [bool(getattr(self.model[k], 'fix_Tp', False)) for k in range(self.K)]
 
         bg_type = {"none": 0, "uniform": 1, "squareroot": 2, "linear": 3}.get(self.background, 0)
         s_tri_in = float(self.model[-1].s_tri) if self.background == "linear" else 0.0
@@ -71,6 +73,7 @@ class TSDCMixtureModel(EMCore):
             t_f64, int_f64,
             ea_arr, tau0_arr, tp_arr, pi_arr,
             da_arr,
+            fix_ea, fix_tp,
             self.beta,
             self.Ea_min, self.Ea_max,
             self.T_min, self.T_max,

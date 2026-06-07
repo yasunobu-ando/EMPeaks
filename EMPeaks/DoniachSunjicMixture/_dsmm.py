@@ -54,6 +54,9 @@ class DoniachSunjicMixtureModel(EMCore):
         alpha_arr = np.array([self.model[k].alpha for k in range(self.K)], dtype=np.float64)
         pi_arr = np.array(self.pi[:self.K_all], dtype=np.float64)
         da_arr = np.ascontiguousarray(self.Dirichlet_alpha[:self.K_all], dtype=np.float64)
+        fix_x0  = [bool(getattr(self.model[k], 'fix_x0',  False)) for k in range(self.K)]
+        fix_gamma = [bool(getattr(self.model[k], 'fix_gamma', False)) for k in range(self.K)]
+        fix_alpha = [bool(getattr(self.model[k], 'fix_alpha', False)) for k in range(self.K)]
 
         bg_type = self._BG_TYPE_MAP.get(self.background, 0)
         s_tri_in = float(self.model[-1].s_tri) if self.background == "linear" else 0.0
@@ -62,6 +65,7 @@ class DoniachSunjicMixtureModel(EMCore):
             x_f64, int_f64,
             x0_arr, gamma_arr, alpha_arr, pi_arr,
             da_arr,
+            fix_x0, fix_gamma, fix_alpha,
             self.x_min, self.x_max,
             m0.gamma_min, m0.gamma_max,
             m0.alpha_min, m0.alpha_max,

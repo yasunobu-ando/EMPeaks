@@ -347,83 +347,107 @@ fn cm_step_eta(
 // ============================================================
 // Public: MLE via conditional maximization
 // Matches Python's conditional_max (single pass)
+// fix_x0/fix_gamma: skip cm_step_x0_gamma; fix_eta: skip cm_step_eta
 // ============================================================
 
 pub fn mle_conditional_max(
     x: &[f64], intensity: &[f64],
     x0: &mut f64, gamma: &mut f64, eta: &mut f64,
+    fix_x0: bool, fix_gamma: bool, fix_eta: bool,
     x_min: f64, x_max: f64,
 ) {
-    if intensity.iter().sum::<f64>() == 0.0 {
-        return;
-    }
+    if fix_x0 && fix_gamma && fix_eta { return; }
+    if intensity.iter().sum::<f64>() == 0.0 { return; }
     let (g1, g2) = e_step_inner(x, *x0, *gamma, *eta, x_min, x_max);
-    cm_step_x0_gamma(x, intensity, &g1, &g2, x0, gamma, *eta, x_min, x_max);
-    *eta = cm_step_eta(x, intensity, *x0, *gamma, x_min, x_max);
+    if !fix_x0 || !fix_gamma {
+        cm_step_x0_gamma(x, intensity, &g1, &g2, x0, gamma, *eta, x_min, x_max);
+    }
+    if !fix_eta {
+        *eta = cm_step_eta(x, intensity, *x0, *gamma, x_min, x_max);
+    }
 }
 
 // ============================================================
 // Public: MLE via L-BFGS-B + eta grid search
 // Matches Python's full_optimization
+// fix_x0/fix_gamma: skip L-BFGS-B for those params; fix_eta: skip grid search
 // ============================================================
 
 pub fn mle_full_optimization(
     x: &[f64], intensity: &[f64],
     x0: &mut f64, gamma: &mut f64, eta: &mut f64,
+    fix_x0: bool, fix_gamma: bool, fix_eta: bool,
     x_min: f64, x_max: f64, gamma_min: f64, gamma_max: f64,
     max_iter: usize, r_eps: f64,
 ) {
-    if intensity.iter().sum::<f64>() == 0.0 {
-        return;
-    }
+    if fix_x0 && fix_gamma && fix_eta { return; }
+    if intensity.iter().sum::<f64>() == 0.0 { return; }
 
     let x_s: Vec<f64> = x.to_vec();
     let w_s: Vec<f64> = intensity.to_vec();
+    let x0_fixed = *x0;
+    let gamma_fixed = *gamma;
+    let eta_fixed_val = *eta;
 
     let mut cur_x0 = *x0;
     let mut cur_gamma = *gamma;
     let mut cur_eta = *eta;
-    let mut ll_prev =
-        ll_from_predict(&x_s, &w_s, cur_x0, cur_gamma, cur_eta, x_min, x_max);
+    let mut ll_prev = ll_from_predict(&x_s, &w_s, cur_x0, cur_gamma, cur_eta, x_min, x_max);
     let eps_num = 1e-7_f64;
 
     for _ in 0..max_iter {
-        let eta_fixed = cur_eta;
-        let bounds = vec![(x_min, x_max), (gamma_min, gamma_max)];
-        let init = vec![cur_x0, cur_gamma];
+        // L-BFGS-B for x0 and/or gamma
+        if !fix_x0 || !fix_gamma {
+            let eta_cur = cur_eta;
+            let mut init = Vec::new();
+            let mut bounds = Vec::new();
+            if !fix_x0    { init.push(cur_x0);    bounds.push((x_min, x_max)); }
+            if !fix_gamma { init.push(cur_gamma);  bounds.push((gamma_min, gamma_max)); }
 
-        if let Ok(state) = lbfgsb::lbfgsb(init, &bounds, |p, g| {
-            let ll   = ll_from_predict(&x_s, &w_s, p[0],           p[1],           eta_fixed, x_min, x_max);
-            let ll_x = ll_from_predict(&x_s, &w_s, p[0] + eps_num, p[1],           eta_fixed, x_min, x_max);
-            let ll_g = ll_from_predict(&x_s, &w_s, p[0],           p[1] + eps_num, eta_fixed, x_min, x_max);
-            g[0] = -(ll_x - ll) / eps_num;
-            g[1] = -(ll_g - ll) / eps_num;
-            Ok(-ll)
-        }) {
-            cur_x0    = state.x()[0];
-            cur_gamma = state.x()[1].clamp(gamma_min, gamma_max);
+            let unpack = move |p: &[f64]| -> (f64, f64) {
+                let mut idx = 0;
+                let x0_v  = if fix_x0    { x0_fixed }    else { let v = p[idx]; idx += 1; v };
+                let gam_v = if fix_gamma { gamma_fixed } else { let v = p[idx]; idx += 1; v };
+                (x0_v, gam_v)
+            };
+
+            if let Ok(state) = lbfgsb::lbfgsb(init, &bounds, |p, g| {
+                let (x0_v, gam_v) = unpack(p);
+                let ll = ll_from_predict(&x_s, &w_s, x0_v, gam_v, eta_cur, x_min, x_max);
+                for i in 0..p.len() {
+                    let mut p_e = p.to_vec();
+                    p_e[i] += eps_num;
+                    let (x0_e, gam_e) = unpack(&p_e);
+                    let ll_e = ll_from_predict(&x_s, &w_s, x0_e, gam_e, eta_cur, x_min, x_max);
+                    g[i] = -(ll_e - ll) / eps_num;
+                }
+                Ok(-ll)
+            }) {
+                let (x0_r, gam_r) = unpack(state.x());
+                if !fix_x0    { cur_x0    = x0_r; }
+                if !fix_gamma { cur_gamma  = gam_r.clamp(gamma_min, gamma_max); }
+            }
         }
 
-        // Grid search for eta: np.arange(0, 1.0, 0.01) = 100 values (parallel)
-        cur_eta = (0..100usize)
-            .into_par_iter()
-            .map(|i| {
-                let e  = i as f64 * 0.01;
-                let ll = ll_from_predict(&x_s, &w_s, cur_x0, cur_gamma, e, x_min, x_max);
-                (e, ll)
-            })
-            .reduce(
-                || (0.5_f64, f64::NEG_INFINITY),
-                |a, b| if b.1 > a.1 { b } else { a },
-            )
-            .0;
+        // Grid search for eta
+        if !fix_eta {
+            cur_eta = (0..100usize)
+                .into_par_iter()
+                .map(|i| {
+                    let e = i as f64 * 0.01;
+                    let ll = ll_from_predict(&x_s, &w_s, cur_x0, cur_gamma, e, x_min, x_max);
+                    (e, ll)
+                })
+                .reduce(
+                    || (eta_fixed_val, f64::NEG_INFINITY),
+                    |a, b| if b.1 > a.1 { b } else { a },
+                )
+                .0;
+        }
 
         let ll_new = ll_from_predict(&x_s, &w_s, cur_x0, cur_gamma, cur_eta, x_min, x_max);
         let residual = (ll_new - ll_prev) / ll_prev.abs().max(1e-300);
-
-        if residual < r_eps {
-            break;
-        }
+        if residual < r_eps { break; }
         ll_prev = ll_new;
     }
 

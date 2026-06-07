@@ -17,6 +17,9 @@ class DoniachSunjic:
         self.gamma_max = gamma_max
         self.alpha_min = alpha_min
         self.alpha_max = alpha_max
+        self.fix_x0 = False
+        self.fix_gamma = False
+        self.fix_alpha = False
         self.x0, self.gamma, self.alpha = self.init_param()
 
     def set_param(self, **param):

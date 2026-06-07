@@ -426,13 +426,15 @@ class EMCore:
         sigma = np.array([self.model[k].sigma for k in range(self.K)], dtype=np.float64)
         pi    = self.pi.astype(np.float64).copy()
         da    = self.Dirichlet_alpha.astype(np.float64).copy()
+        fix_mu    = [bool(getattr(self.model[k], 'fix_mu',    False)) for k in range(self.K)]
+        fix_sigma = [bool(getattr(self.model[k], 'fix_sigma', False)) for k in range(self.K)]
 
         bg_type = {"none": 0, "uniform": 1, "squareroot": 2, "linear": 3}.get(self.background, 0)
         s_tri_in = float(self.model[-1].s_tri) if self.background == "linear" else 0.0
 
         total_iter, ll_hist, res_hist, s_tri_out = empeaks_rust_core.run_em_loop(
             x.astype(np.float64), intensity.astype(np.float64),
-            mu, sigma, pi, da, max_iter, r_eps,
+            mu, sigma, pi, da, fix_mu, fix_sigma, max_iter, r_eps,
             self.x_min, self.x_max, bg_type, s_tri_in,
         )
 

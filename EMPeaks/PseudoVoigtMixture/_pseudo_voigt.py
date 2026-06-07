@@ -14,6 +14,9 @@ class PseudoVoigt:
         self.x_max = x_max
         self.gamma_min = gamma_min
         self.gamma_max = gamma_max
+        self.fix_x0 = False
+        self.fix_gamma = False
+        self.fix_eta = False
         self.x0 = np.random.uniform(x_min, x_max)
         self.gamma = np.random.uniform(gamma_min, gamma_max)
         self.eta = np.random.uniform(0.5, 1.0)

@@ -13,6 +13,8 @@ class Gaussian:
         self.x_max = x_max
         self.sigma_min = sigma_min
         self.sigma_max = sigma_max
+        self.fix_mu = False
+        self.fix_sigma = False
         self.mu, self.sigma = self.init_param()
 
     def set_param(self, **param):

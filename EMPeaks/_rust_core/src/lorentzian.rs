@@ -48,41 +48,65 @@ fn ll_lo(x: &[f64], intensity: &[f64], x0: f64, gamma: f64, x_min: f64, x_max: f
 }
 
 // MLE via L-BFGS-B: matches Python minimize_bfgs
-// NOTE: x0/gamma inputs are ignored — function resets to empirical values (matching Python)
+// fix_x0/fix_gamma: skip optimizing those parameters.
+// When not fixed, x0/gamma are reset to empirical estimates (matching Python's minimize_bfgs reinit).
 pub fn mle_lorentzian(
     x: &[f64],
     intensity: &[f64],
     x0: &mut f64,
     gamma: &mut f64,
+    fix_x0: bool,
+    fix_gamma: bool,
     x_min: f64,
     x_max: f64,
 ) {
-    let sum_w: f64 = intensity.iter().sum();
-    if sum_w < 1e-300 {
-        return;
-    }
+    if fix_x0 && fix_gamma { return; }
 
-    // Reset to empirical estimates (matching Python's minimize_bfgs reinit)
-    let x0_emp: f64 = x.iter().zip(intensity.iter()).map(|(&xi, &wi)| xi * wi).sum::<f64>() / sum_w;
-    let x2_emp: f64 = x.iter().zip(intensity.iter()).map(|(&xi, &wi)| xi * xi * wi).sum::<f64>() / sum_w;
-    let gamma_emp = (2.0 * LN2 * x2_emp).sqrt().max(0.1);
+    let sum_w: f64 = intensity.iter().sum();
+    if sum_w < 1e-300 { return; }
 
     let x_s = x.to_vec();
     let w_s = intensity.to_vec();
     let eps = 1e-7_f64;
+    let x0_fixed = *x0;
+    let gamma_fixed = *gamma;
 
-    let bounds = vec![(x_min, x_max), (0.1_f64, 2000.0_f64)];
-    let init = vec![x0_emp, gamma_emp];
+    let mut init = Vec::new();
+    let mut bounds = Vec::new();
+
+    if !fix_x0 {
+        let x0_emp = x.iter().zip(intensity.iter()).map(|(&xi, &wi)| xi * wi).sum::<f64>() / sum_w;
+        init.push(x0_emp);
+        bounds.push((x_min, x_max));
+    }
+    if !fix_gamma {
+        let x2_emp = x.iter().zip(intensity.iter()).map(|(&xi, &wi)| xi * xi * wi).sum::<f64>() / sum_w;
+        let gamma_emp = (2.0 * LN2 * x2_emp).sqrt().max(0.1);
+        init.push(gamma_emp);
+        bounds.push((0.1_f64, 2000.0_f64));
+    }
+
+    let unpack = move |p: &[f64]| -> (f64, f64) {
+        let mut idx = 0;
+        let x0_v  = if fix_x0    { x0_fixed }    else { let v = p[idx]; idx += 1; v };
+        let gam_v = if fix_gamma { gamma_fixed } else { let v = p[idx]; idx += 1; v };
+        (x0_v, gam_v)
+    };
 
     if let Ok(state) = lbfgsb::lbfgsb(init, &bounds, |p, g| {
-        let ll = ll_lo(&x_s, &w_s, p[0], p[1], x_min, x_max);
-        let ll_x = ll_lo(&x_s, &w_s, p[0] + eps, p[1], x_min, x_max);
-        let ll_g = ll_lo(&x_s, &w_s, p[0], p[1] + eps, x_min, x_max);
-        g[0] = -(ll_x - ll) / eps;
-        g[1] = -(ll_g - ll) / eps;
+        let (x0_v, gam_v) = unpack(p);
+        let ll = ll_lo(&x_s, &w_s, x0_v, gam_v, x_min, x_max);
+        for i in 0..p.len() {
+            let mut p_e = p.to_vec();
+            p_e[i] += eps;
+            let (x0_e, gam_e) = unpack(&p_e);
+            let ll_e = ll_lo(&x_s, &w_s, x0_e, gam_e, x_min, x_max);
+            g[i] = -(ll_e - ll) / eps;
+        }
         Ok(-ll)
     }) {
-        *x0 = state.x()[0];
-        *gamma = state.x()[1].clamp(0.1, 2000.0);
+        let (x0_r, gam_r) = unpack(state.x());
+        if !fix_x0    { *x0    = x0_r; }
+        if !fix_gamma { *gamma = gam_r.clamp(0.1, 2000.0); }
     }
 }
