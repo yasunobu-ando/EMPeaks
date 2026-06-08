@@ -1,0 +1,5 @@
+warning: No `requires-python` value found in the workspace. Defaulting to `>=3.11`.
+Traceback (most recent call last):
+  File "/Users/yasunobu/Documents/GitHub/EMPeaks/test_lorentzian_crash.py", line 1, in <module>
+    import numpy as np
+ModuleNotFoundError: No module named 'numpy'

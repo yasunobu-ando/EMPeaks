@@ -35,19 +35,6 @@ class VoigtMixtureModel(EMCore):
                                  sigma_min, sigma_max, 
                                  gamma_min, gamma_max) for k in range(self.K)]
 
-    def set_param(self, **param):
-        """
-        """
-        if not param:
-            return self
-
-        param_keys = set(param.keys())
-        org_K = self.K
-        if param_keys >= {'K'}:
-            self.K = param['K']
-        else:
-            param['K'] = self.K
-
     def set_single_params(self, **param):
         # setting parameters for each single Gaussian model.
         param_set = {"x0", "sigma", "gamma"}

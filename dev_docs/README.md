@@ -9,3 +9,4 @@ This directory contains documentation for the development and operation of the E
 - [依存関係とリスク管理](./dependencies.md)
 - [ドキュメント構成マップ](./documentation_map.md)
 - [EMCore 詳細ドキュメント](./em_core_details.md)
+- [CLIパッケージング構成と iCloud Drive 問題](./cli_packaging.md)

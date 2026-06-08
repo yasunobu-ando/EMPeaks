@@ -8,7 +8,7 @@ from module.data_constructor import data_constructor
 from module.model_constructor import model_constructor
 from module.fitting_board_constructor import fitting_board_constructor
 from module.utils import init_application
-from module.i18n import init_language
+from module.i18n import init_language, t
 
 hide_st_style = """
 <style>
@@ -18,8 +18,9 @@ footer:after{content: "; Copyright 2025 @ National Institute of Advanced Industr
 
 
 def main():
-    st.set_page_config(layout="wide")
+    st.set_page_config(layout="wide", page_title="EMPeaks Deck")
     st.markdown(hide_st_style, unsafe_allow_html=True)
+    st.title(t("app_title"))
 
     # Initialize application
     init_application()

@@ -12,6 +12,7 @@ try:
     from EMPeaks.LorentzianMixture import LorentzianMixtureModel
     from EMPeaks.PseudoVoigtMixture import PseudoVoigtMixtureModel
     from EMPeaks.DoniachSunjicMixture import DoniachSunjicMixtureModel
+    from EMPeaks.VoigtMixture import VoigtMixtureModel
     from EMPeaks.TSDCMixture import TSDCMixtureModel
     EMPEAKS_AVAILABLE = True
 except ImportError:
@@ -20,6 +21,7 @@ except ImportError:
     LorentzianMixtureModel = None
     PseudoVoigtMixtureModel = None
     DoniachSunjicMixtureModel = None
+    VoigtMixtureModel = None
     TSDCMixtureModel = None
 
 
@@ -61,6 +63,8 @@ def init_model(K, x_min, x_max):
         return PseudoVoigtMixtureModel(K=K, x_min=x_min, x_max=x_max, background=background)
     elif model_type == 'DoniachSunjicMixture':
         return DoniachSunjicMixtureModel(K=K, x_min=x_min, x_max=x_max, background=background)
+    elif model_type == 'VoigtMixture':
+        return VoigtMixtureModel(K=K, x_min=x_min, x_max=x_max, background=background)
     elif model_type == 'TSDCMixture':
         return TSDCMixtureModel(
             K=K,
@@ -124,4 +128,5 @@ def refresh():
     """状態をリフレッシュ"""
     st.session_state['Fitted'] = False
     st.session_state['FitInfo'] = None
+    st.session_state['ModelInstance'] = None
     st.cache_data.clear()

@@ -7,7 +7,7 @@ import streamlit as st
 TRANSLATIONS = {
     "en": {
         # App
-        "app_title": "EMPeaks GUI",
+        "app_title": "EMPeaks Deck",
         "app_subtitle": "Spectrum Peak Fitting Application",
 
         # Sidebar - Language
@@ -80,7 +80,7 @@ TRANSLATIONS = {
     },
     "ja": {
         # App
-        "app_title": "EMPeaks GUI",
+        "app_title": "EMPeaks Deck",
         "app_subtitle": "スペクトル ピークフィッティング アプリケーション",
 
         # Sidebar - Language

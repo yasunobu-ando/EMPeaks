@@ -4,7 +4,7 @@ import altair as alt
 import pandas as pd
 import numpy as np
 import json
-from module.utils import refresh, run
+from module.utils import refresh, run, init_model
 from module.i18n import t
 
 
@@ -41,6 +41,12 @@ def fitting_board_constructor(db, param):
         # Buttons
         if chart_col[0].button(t("start_optimization")):
             with st.spinner(t("fitting_spinner")):
+                # サイドバーの現在値でモデルを再初期化してから実行
+                x_min = db[data_column[0]].min()
+                x_max = db[data_column[0]].max()
+                st.session_state['ModelInstance'] = init_model(
+                    st.session_state['K'], x_min, x_max
+                )
                 st.session_state['ModelInstance'], info = run(
                     st.session_state['ModelInstance'],
                     db[data_column[0]],
@@ -126,19 +132,30 @@ def fitting_board_constructor(db, param):
                     color='blueviolet', strokeWidth=3
                 ).encode(x=data_column[0], y='mixture_model')
 
-            # Individual peaks (dashed)
-            tmp_peaks = x_data.to_frame()
-            flag = False
+            # Individual peaks + background (同一レイヤーで melt して color='data_type:N' で描画)
+            tmp_series = x_data.to_frame()
+            has_series = False
+
             for k in range(K):
                 if check_plot['Peaks'][k]:
-                    flag = True
+                    has_series = True
                     y_peak = pd.Series(mi.model[k].predict(x_data.values) * mi.pi[k] * mi.N_tot,
                                        name=f"Peak_#{k}")
                     fitting_summary[f'Peak #{k:02d}'] = y_peak.tolist()
-                    tmp_peaks = pd.concat([tmp_peaks, y_peak], axis=1)
-            if flag:
-                tmp_peaks_long = tmp_peaks.melt(id_vars=data_column[0], var_name='data_type')
-                chart += alt.Chart(tmp_peaks_long).mark_line(
+                    tmp_series = pd.concat([tmp_series, y_peak], axis=1)
+
+            if check_plot['Background Model'] and len(mi.model) > K:
+                has_series = True
+                bg_label = f"BG: {st.session_state['BackgroundModel']}"
+                bg_col = f"BG_{st.session_state['BackgroundModel']}"
+                y_bg = pd.Series(mi.model[-1].predict(x_data.values) * mi.pi[-1] * mi.N_tot,
+                                 name=bg_col)
+                fitting_summary[bg_label] = y_bg.tolist()
+                tmp_series = pd.concat([tmp_series, y_bg], axis=1)
+
+            if has_series:
+                tmp_series_long = tmp_series.melt(id_vars=data_column[0], var_name='data_type')
+                chart += alt.Chart(tmp_series_long).mark_line(
                     strokeDash=[5, 5], strokeWidth=3
                 ).encode(
                     x=data_column[0],
@@ -146,15 +163,9 @@ def fitting_board_constructor(db, param):
                     color='data_type:N'
                 )
 
-            # Background model
-            if check_plot['Background Model'] and len(mi.model) > K:
-                y_bg = pd.Series(mi.model[-1].predict(x_data.values) * mi.pi[-1] * mi.N_tot,
-                                 name=f"BG: {st.session_state['BackgroundModel']}")
-                fitting_summary[f"BG: {st.session_state['BackgroundModel']}"] = y_bg.tolist()
-
         # Render chart
         chart = chart.properties(height=400).configure_axis(labelFontSize=15, titleFontSize=24)
-        chart_col[1].altair_chart(chart, use_container_width=True)
+        chart_col[1].altair_chart(chart, width='stretch')
 
         # Export section
         if st.session_state['Fitted']:

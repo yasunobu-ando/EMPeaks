@@ -32,9 +32,11 @@ def data_constructor():
             # Generate sample data
             np.random.seed(42)
             x = np.linspace(0, 100, 500)
-            y = (50 * np.exp(-((x - 30) ** 2) / (2 * 5 ** 2)) +
-                 80 * np.exp(-((x - 60) ** 2) / (2 * 8 ** 2)) +
-                 np.random.normal(0, 2, len(x)))
+            y_true = (50 * np.exp(-((x - 30) ** 2) / (2 * 5 ** 2)) +
+                      80 * np.exp(-((x - 60) ** 2) / (2 * 8 ** 2)))
+            dx = x[1] - x[0]
+            y_true = y_true * (10000 / (y_true.sum() * dx))
+            y = np.random.poisson(y_true).astype(float)
             st.session_state['Data'] = pd.DataFrame({'Energy': x, 'Intensity': y})
 
         data = st.session_state['Data']
@@ -115,7 +117,7 @@ def data_constructor():
             .mark_line().encode(x=x_variable, y=y_variable) \
             .properties(height=385) \
             .configure_axis(labelFontSize=15, titleFontSize=24)
-        data_col[2].altair_chart(data_fig, use_container_width=True)
+        data_col[2].altair_chart(data_fig, width='stretch')
 
         # Build a clean 2-column DataFrame for downstream use
         x_series = chart_db[x_variable] if isinstance(chart_db[x_variable], pd.Series) else chart_db[x_variable].iloc[:, 0]
