@@ -72,18 +72,21 @@ pub fn mle_lorentzian(
     let gamma_fixed = *gamma;
 
     let mut init = Vec::new();
-    let mut bounds = Vec::new();
+    let mut bounds_lower = Vec::new();
+    let mut bounds_upper = Vec::new();
 
     if !fix_x0 {
         let x0_emp = x.iter().zip(intensity.iter()).map(|(&xi, &wi)| xi * wi).sum::<f64>() / sum_w;
         init.push(x0_emp);
-        bounds.push((x_min, x_max));
+        bounds_lower.push(x_min);
+        bounds_upper.push(x_max);
     }
     if !fix_gamma {
         let x2_emp = x.iter().zip(intensity.iter()).map(|(&xi, &wi)| xi * xi * wi).sum::<f64>() / sum_w;
         let gamma_emp = (2.0 * LN2 * x2_emp).sqrt().max(0.1);
         init.push(gamma_emp);
-        bounds.push((0.1_f64, 2000.0_f64));
+        bounds_lower.push(0.1_f64);
+        bounds_upper.push(2000.0_f64);
     }
 
     let unpack = move |p: &[f64]| -> (f64, f64) {
@@ -93,9 +96,13 @@ pub fn mle_lorentzian(
         (x0_v, gam_v)
     };
 
-    if let Ok(state) = lbfgsb::lbfgsb(init, &bounds, |p, g| {
+    let mut solver = lbfgsb_rs_pure::LBFGSB::new(10) // M=10 is typical for L-BFGS
+        .with_max_iter(10000)
+        .with_pgtol(1e-5);
+    let mut f_and_grad = |p: &[f64]| -> (f64, Vec<f64>) {
         let (x0_v, gam_v) = unpack(p);
         let ll = ll_lo(&x_s, &w_s, x0_v, gam_v, x_min, x_max);
+        let mut g = vec![0.0; p.len()];
         for i in 0..p.len() {
             let mut p_e = p.to_vec();
             p_e[i] += eps;
@@ -103,9 +110,12 @@ pub fn mle_lorentzian(
             let ll_e = ll_lo(&x_s, &w_s, x0_e, gam_e, x_min, x_max);
             g[i] = -(ll_e - ll) / eps;
         }
-        Ok(-ll)
-    }) {
-        let (x0_r, gam_r) = unpack(state.x());
+        (-ll, g)
+    };
+
+    if let Ok(state) = solver.minimize(&mut init, &bounds_lower, &bounds_upper, &mut f_and_grad) {
+        println!("LBFGSB finished");
+        let (x0_r, gam_r) = unpack(&state.x);
         if !fix_x0    { *x0    = x0_r; }
         if !fix_gamma { *gamma = gam_r.clamp(0.1, 2000.0); }
     }

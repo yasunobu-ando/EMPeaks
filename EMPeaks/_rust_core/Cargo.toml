@@ -11,10 +11,11 @@ crate-type = ["cdylib"]
 pyo3    = { version = "0.22", features = ["extension-module", "abi3-py311"] }
 numpy   = "0.22"
 ndarray = "0.16"
-lbfgsb  = "0.1"
+lbfgsb-rs-pure  = "0.1.1"
 rayon   = "1.10"
 roots   = "0.0.8"
 xsf     = "0.5.1"
+lbfgsb = "0.1.0"
 
 
 [profile.release]

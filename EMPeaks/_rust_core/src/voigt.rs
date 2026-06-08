@@ -298,11 +298,12 @@ pub fn mle_voigt(
     }
 
     let mut init = Vec::new();
-    let mut bounds = Vec::new();
+    let mut bounds_lower = Vec::new();
+    let mut bounds_upper = Vec::new();
 
-    if !fix_x0    { init.push(*x0);    bounds.push((x_min, x_max)); }
-    if !fix_sigma { init.push(*sigma); bounds.push((sigma_min, sigma_max)); }
-    if !fix_gamma { init.push(*gamma); bounds.push((gamma_min, gamma_max)); }
+    if !fix_x0    { init.push(*x0);    bounds_lower.push(x_min); bounds_upper.push(x_max); }
+    if !fix_sigma { init.push(*sigma); bounds_lower.push(sigma_min); bounds_upper.push(sigma_max); }
+    if !fix_gamma { init.push(*gamma); bounds_lower.push(gamma_min); bounds_upper.push(gamma_max); }
 
     let eps_num = 1e-7_f64;
     let x0_fixed = *x0;
@@ -319,9 +320,13 @@ pub fn mle_voigt(
         (x0_v, sig_v, gam_v)
     };
 
-    if let Ok(state) = lbfgsb::lbfgsb(init, &bounds, |p, g| {
+    let mut solver = lbfgsb_rs_pure::LBFGSB::new(10)
+        .with_max_iter(10000)
+        .with_pgtol(1e-5);
+    let mut f_and_grad = |p: &[f64]| -> (f64, Vec<f64>) {
         let (x0_v, sig_v, gam_v) = unpack(p);
         let ll = ll_voigt(&x_s, &w_s, x0_v, sig_v, gam_v, x_min, x_max);
+        let mut g = vec![0.0; p.len()];
 
         for i in 0..p.len() {
             let mut p_eps = p.to_vec();
@@ -330,9 +335,11 @@ pub fn mle_voigt(
             let ll_e = ll_voigt(&x_s, &w_s, x0_e, sig_e, gam_e, x_min, x_max);
             g[i] = -(ll_e - ll) / eps_num;
         }
-        Ok(-ll)
-    }) {
-        let (x0_r, sig_r, gam_r) = unpack(state.x());
+        (-ll, g)
+    };
+
+    if let Ok(state) = solver.minimize(&mut init, &bounds_lower, &bounds_upper, &mut f_and_grad) {
+        let (x0_r, sig_r, gam_r) = unpack(&state.x);
         if !fix_x0    { *x0    = x0_r; }
         if !fix_sigma { *sigma = sig_r.clamp(sigma_min, sigma_max); }
         if !fix_gamma { *gamma = gam_r.clamp(gamma_min, gamma_max); }

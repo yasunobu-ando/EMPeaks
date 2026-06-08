@@ -400,9 +400,10 @@ pub fn mle_full_optimization(
         if !fix_x0 || !fix_gamma {
             let eta_cur = cur_eta;
             let mut init = Vec::new();
-            let mut bounds = Vec::new();
-            if !fix_x0    { init.push(cur_x0);    bounds.push((x_min, x_max)); }
-            if !fix_gamma { init.push(cur_gamma);  bounds.push((gamma_min, gamma_max)); }
+            let mut bounds_lower = Vec::new();
+            let mut bounds_upper = Vec::new();
+            if !fix_x0    { init.push(cur_x0);    bounds_lower.push(x_min); bounds_upper.push(x_max); }
+            if !fix_gamma { init.push(cur_gamma); bounds_lower.push(gamma_min); bounds_upper.push(gamma_max); }
 
             let unpack = move |p: &[f64]| -> (f64, f64) {
                 let mut idx = 0;
@@ -411,9 +412,13 @@ pub fn mle_full_optimization(
                 (x0_v, gam_v)
             };
 
-            if let Ok(state) = lbfgsb::lbfgsb(init, &bounds, |p, g| {
+            let mut solver = lbfgsb_rs_pure::LBFGSB::new(10)
+                .with_max_iter(10000)
+                .with_pgtol(1e-5);
+            let mut f_and_grad = |p: &[f64]| -> (f64, Vec<f64>) {
                 let (x0_v, gam_v) = unpack(p);
                 let ll = ll_from_predict(&x_s, &w_s, x0_v, gam_v, eta_cur, x_min, x_max);
+                let mut g = vec![0.0; p.len()];
                 for i in 0..p.len() {
                     let mut p_e = p.to_vec();
                     p_e[i] += eps_num;
@@ -421,9 +426,11 @@ pub fn mle_full_optimization(
                     let ll_e = ll_from_predict(&x_s, &w_s, x0_e, gam_e, eta_cur, x_min, x_max);
                     g[i] = -(ll_e - ll) / eps_num;
                 }
-                Ok(-ll)
-            }) {
-                let (x0_r, gam_r) = unpack(state.x());
+                (-ll, g)
+            };
+
+            if let Ok(state) = solver.minimize(&mut init, &bounds_lower, &bounds_upper, &mut f_and_grad) {
+                let (x0_r, gam_r) = unpack(&state.x);
                 if !fix_x0    { cur_x0    = x0_r; }
                 if !fix_gamma { cur_gamma  = gam_r.clamp(gamma_min, gamma_max); }
             }

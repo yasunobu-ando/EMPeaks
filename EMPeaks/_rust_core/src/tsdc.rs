@@ -139,9 +139,10 @@ pub fn mle_tsdc_lbfgsb(
     let d2: f64 = t.iter().zip(intensity.iter()).map(|(&ti, &yi)| yi / ti * INV_KB).sum();
 
     let mut init = Vec::new();
-    let mut bounds = Vec::new();
-    if !fix_ea { init.push(*ea); bounds.push((ea_min, ea_max)); }
-    if !fix_tp { init.push(*tp); bounds.push((t_min, t_max)); }
+    let mut bounds_lower = Vec::new();
+    let mut bounds_upper = Vec::new();
+    if !fix_ea { init.push(*ea); bounds_lower.push(ea_min); bounds_upper.push(ea_max); }
+    if !fix_tp { init.push(*tp); bounds_lower.push(t_min); bounds_upper.push(t_max); }
 
     let unpack = move |p: &[f64]| -> (f64, f64) {
         let mut idx = 0;
@@ -153,7 +154,10 @@ pub fn mle_tsdc_lbfgsb(
     let t_s = t.to_vec();
     let w_s = intensity.to_vec();
 
-    if let Ok(state) = lbfgsb::lbfgsb(init, &bounds, |p, g| {
+    let mut solver = lbfgsb_rs_pure::LBFGSB::new(10)
+        .with_max_iter(10000)
+        .with_pgtol(1e-5);
+    let mut f_and_grad = |p: &[f64]| -> (f64, Vec<f64>) {
         let (ea_c, tp_c) = unpack(p);
         let tau0_c = get_tau0(tp_c, ea_c, beta);
 
@@ -166,15 +170,18 @@ pub fn mle_tsdc_lbfgsb(
         let ll_e = (d1 - d3 / beta_tau) * (1.0 / ea_c + 1.0 / ktp) - d2 - d3_p / beta_tau;
         let ll_t = (-d1 + d3 / beta_tau) * (2.0 / tp_c + ea_c * INV_KB / (tp_c * tp_c));
 
+        let mut g = vec![0.0; p.len()];
         let mut gi = 0;
         if !fix_ea { g[gi] = -ll_e; gi += 1; }
         if !fix_tp { g[gi] = -ll_t; gi += 1; }
         let _ = gi;
 
         let ll = ll_tsdc(&t_s, &w_s, ea_c, tau0_c, beta);
-        Ok(-ll)
-    }) {
-        let (ea_r, tp_r) = unpack(state.x());
+        (-ll, g)
+    };
+
+    if let Ok(state) = solver.minimize(&mut init, &bounds_lower, &bounds_upper, &mut f_and_grad) {
+        let (ea_r, tp_r) = unpack(&state.x);
         if !fix_ea { *ea = ea_r.clamp(ea_min, ea_max); }
         if !fix_tp { *tp = tp_r.clamp(t_min, t_max); }
         *tau0 = get_tau0(*tp, *ea, beta);
