@@ -63,6 +63,20 @@ TRANSLATIONS = {
         "mixing_parameter": "mixing parameter",
         "asymmetry_parameter": "asymmetry parameter",
         "same_axis_warning": "X and Y must be different columns.",
+
+        # Fitting method
+        "fitting_method": "Fitting Method",
+
+        # TSDC-specific
+        "tsdc_parameters": "TSDC Parameters",
+        "tsdc_beta": "Heating rate β [K/s]",
+        "tsdc_t_min": "T min [K]",
+        "tsdc_t_max": "T max [K]",
+        "tsdc_ea_min": "Ea min [eV]",
+        "tsdc_ea_max": "Ea max [eV]",
+        "tsdc_ea": "Activation Energy [eV]",
+        "tsdc_tp": "Peak Temperature [K]",
+        "tsdc_tau0": "Relaxation Time τ₀ [s]",
     },
     "ja": {
         # App
@@ -122,6 +136,20 @@ TRANSLATIONS = {
         "mixing_parameter": "混合パラメータ",
         "asymmetry_parameter": "非対称パラメータ",
         "same_axis_warning": "X変数とY変数は異なる列を選択してください。",
+
+        # Fitting method
+        "fitting_method": "フィッティング手法",
+
+        # TSDC-specific
+        "tsdc_parameters": "TSDCパラメータ",
+        "tsdc_beta": "昇温速度 β [K/s]",
+        "tsdc_t_min": "T 最小 [K]",
+        "tsdc_t_max": "T 最大 [K]",
+        "tsdc_ea_min": "Ea 最小 [eV]",
+        "tsdc_ea_max": "Ea 最大 [eV]",
+        "tsdc_ea": "活性化エネルギー [eV]",
+        "tsdc_tp": "ピーク温度 [K]",
+        "tsdc_tau0": "緩和時間 τ₀ [s]",
     },
 }
 

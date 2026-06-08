@@ -3,8 +3,10 @@ import streamlit as st
 from module.utils import init_model, refresh
 from module.i18n import t
 
-MODEL_LIST = ['GaussianMixture', 'LorentzianMixture', 'PseudoVoigtMixture', 'DoniachSunjicMixture']
+MODEL_LIST = ['GaussianMixture', 'LorentzianMixture', 'PseudoVoigtMixture', 'DoniachSunjicMixture', 'TSDCMixture']
 BACKGROUND_LIST = ['none', 'uniform', 'linear', 'squareroot', 'ramp_sum']
+FITTING_METHOD_STANDARD = ['sampling']
+FITTING_METHOD_TSDC = ['sampling', 'leastsq', 'leastsq_tau0', 'l2_div']
 
 
 def model_constructor(db, x_variable):
@@ -19,6 +21,8 @@ def model_constructor(db, x_variable):
             index=0,
             on_change=refresh
         )
+
+        is_tsdc = st.session_state['MixtureModel'] == 'TSDCMixture'
 
         # K (Component Number)
         st.session_state['K'] = int(st.sidebar.number_input(
@@ -36,6 +40,51 @@ def model_constructor(db, x_variable):
             index=0,
             on_change=refresh
         )
+
+        # Fitting method selection
+        method_list = FITTING_METHOD_TSDC if is_tsdc else FITTING_METHOD_STANDARD
+        st.session_state['FittingMethod'] = st.sidebar.selectbox(
+            t("fitting_method"),
+            method_list,
+            index=0,
+            on_change=refresh
+        )
+
+        # TSDC-specific parameters
+        if is_tsdc:
+            st.sidebar.subheader(t("tsdc_parameters"))
+            st.session_state['TSDC_beta'] = st.sidebar.number_input(
+                t("tsdc_beta"),
+                value=st.session_state.get('TSDC_beta', 0.0833),
+                format="%.4f",
+                on_change=refresh
+            )
+            tsdc_col = st.sidebar.columns(2)
+            st.session_state['TSDC_T_min'] = tsdc_col[0].number_input(
+                t("tsdc_t_min"),
+                value=st.session_state.get('TSDC_T_min', 300),
+                format="%d",
+                on_change=refresh
+            )
+            st.session_state['TSDC_T_max'] = tsdc_col[1].number_input(
+                t("tsdc_t_max"),
+                value=st.session_state.get('TSDC_T_max', 900),
+                format="%d",
+                on_change=refresh
+            )
+            ea_col = st.sidebar.columns(2)
+            st.session_state['TSDC_Ea_min'] = ea_col[0].number_input(
+                t("tsdc_ea_min"),
+                value=st.session_state.get('TSDC_Ea_min', 0.05),
+                format="%.3f",
+                on_change=refresh
+            )
+            st.session_state['TSDC_Ea_max'] = ea_col[1].number_input(
+                t("tsdc_ea_max"),
+                value=st.session_state.get('TSDC_Ea_max', 3.0),
+                format="%.3f",
+                on_change=refresh
+            )
 
         # Input Trial Frequency
         st.session_state['TrialFrequency'] = int(st.sidebar.number_input(
@@ -83,9 +132,11 @@ def _get_model_param_info():
     elif model_type == 'LorentzianMixture':
         return {'x0': t('peak_position'), 'gamma': t('hwhm'), 'pi': t('mixing_ratio')}
     elif model_type == 'PseudoVoigtMixture':
-        return {'mu': t('peak_position'), 'sigma': t('standard_deviation'), 'eta': t('mixing_parameter'),
+        return {'x0': t('peak_position'), 'gamma': t('hwhm'), 'eta': t('mixing_parameter'),
                 'pi': t('mixing_ratio')}
     elif model_type == 'DoniachSunjicMixture':
-        return {'mu': t('peak_position'), 'sigma': t('standard_deviation'), 'alpha': t('asymmetry_parameter'),
+        return {'x0': t('peak_position'), 'gamma': t('hwhm'), 'alpha': t('asymmetry_parameter'),
                 'pi': t('mixing_ratio')}
+    elif model_type == 'TSDCMixture':
+        return {'Ea': t('tsdc_ea'), 'Tp': t('tsdc_tp'), 'tau0': t('tsdc_tau0'), 'pi': t('mixing_ratio')}
     return {'mu': t('peak_position'), 'sigma': t('standard_deviation'), 'pi': t('mixing_ratio')}

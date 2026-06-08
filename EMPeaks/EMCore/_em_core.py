@@ -40,7 +40,7 @@ class EMCore:
         self.background = background
         self.dx = 1.0
         self.k_ramp = k_ramp  # Store k_ramp for ramp_sum
-        
+
         # Initialize BackgroundFactory for delegation
         self._bg_factory = BackgroundFactory(x_min, x_max, k_ramp)
 
@@ -198,7 +198,7 @@ class EMCore:
 
     def _update_mixture_weights(self, n_background_models, use_random=False):
         """背景モデル追加時に混合重みを更新
-        
+
         Args:
             n_background_models: 追加する背景モデルの数
             use_random: Trueならランダム初期化、Falseなら定数初期化
@@ -230,7 +230,7 @@ class EMCore:
 
         self.x_min = np.min(x)
         self.x_max = np.max(x)
-        
+
         # Recreate background model with updated x_min/x_max
         if self.background in ('uniform', 'squareroot', 'linear'):
             self._bg_factory.update_range(self.x_min, self.x_max)
@@ -292,7 +292,7 @@ class EMCore:
                  max_iter=1000, r_eps=1e-7, criteria='likelihood', stdout=False):
         import copy
         from EMPeaks.EMCore._backend import get_backend
-        
+
         hist_model = []
         hist_run_info = []
 
@@ -314,7 +314,7 @@ class EMCore:
             else:
                 # 純粋なPython実装の場合、GILの競合によりThreadPoolExecutorがハングアップするため直列実行する
                 results = [_run_trial(i) for i in range(trial)]
-            
+
             for res in results:
                 hist_model.append(res[0])
                 hist_run_info.append(res[1])
@@ -364,11 +364,11 @@ class EMCore:
 
         return info
 
-    def deterministic_annealing(self, x, intensity, method='adapted_em', temp0=3, n_temp=5, trial=10,
-                                max_iter=3000, r_eps=1e-9, criteria='likelihood', stdout=False):
+    def deterministic_annealing(self, x, intensity,  max_iter=3000, r_eps=1e-9,
+                                temp0=3, n_temp=5, stdout=False):
         """
         temp0: in reference, t_0
-        n_temp: in reference, H
+        n_temp: number of stages of annealing temperature. In reference, H.
         """
         print("Start deterministic annealing.")
         print("Please check class variable Dirichlet_alpha: {}".format(self.Dirichlet_alpha))
@@ -376,7 +376,7 @@ class EMCore:
 
         # confirm the validity of temp0
         print("Average of data intensity: ", np.average(intensity))
-        # creating temprerature profile
+        # creating temperature profile
         temp_power = np.array([temp0 + (h-1)*(np.log10(np.sum(intensity))-temp0)/(n_temp-1) 
                                  for h in range(1, n_temp+1)])
         temp_profile = np.array([np.sum(intensity)/10**temp_power[h] for h in range(0,n_temp)])
@@ -385,7 +385,7 @@ class EMCore:
         hist_run_info = []
         for temp in temp_profile:
             print("Stage Temperature: {}:".format(temp))
-            run_info = self.fit(x, intensity/temp, method=method, max_iter=max_iter, r_eps=r_eps, stdout=stdout)
+            run_info = self.fit(x, intensity/temp, method='adapted_em', max_iter=max_iter, r_eps=r_eps, stdout=stdout)
             tmp_param = copy.deepcopy(self.export_param())
             hist_model.append(tmp_param)
             hist_run_info.append(run_info)
@@ -608,19 +608,19 @@ class EMCore:
 
         start = time.time()
         pred = self.predict(x)
-        
+
         denom = np.sum(pred ** 2)
         if denom == 0:
             self.N_tot = np.abs(integrate.trapezoid(intensity, x))
         else:
             self.N_tot = np.sum(intensity * pred) / denom
-            
+
         self.N = list(self.pi * self.N_tot)
 
         # evaluate rmse
         res = intensity - pred * self.N_tot
         rmse = np.sqrt(np.sum(res ** 2) / x.size)
-        
+
         if stdout:
             print("   exact linear least-square optimization is successfully finished.")
             print("            RMSE:      {:12.6e}\n"

@@ -104,7 +104,7 @@ class TSDC:
     def predict(self, T):
         if get_backend() == "rust" and _RUST_AVAILABLE:
             return _rust_tsdc_predict(T, self.Ea, self.tau0, self.beta)
-            
+
         prob = 1.0 / (self.beta * self.tau0) * \
                        np.exp(- self.Ea / kB / T
                               - 1 / self.beta / self.tau0
@@ -323,7 +323,7 @@ class TSDC:
                 return
             except RuntimeError as e:
                 pass
-                
+
         d1 = np.sum(intensity)
         d2 = np.sum(intensity/T * inv_kB)
 
@@ -365,6 +365,7 @@ class TSDC:
             pass
         self.tau0 = self.get_tau0()
         self.P0 = np.trapezoid(intensity, T) / self.beta
+        self.P0 = integrate.trapezoid(intensity, T) / self.beta
         return
 
     def find_root(self, T, intensity):
@@ -378,7 +379,7 @@ class TSDC:
                 return
             except RuntimeError as e:
                 pass
-                
+
         def f_sum(E, T, Y):
             return np.sum(Y * np.array(T * expn(2, E * inv_kB / T)))
 
@@ -395,7 +396,7 @@ class TSDC:
             pass
         self.tau0 = f_sum(self.Ea, T, intensity) / (self.beta * np.sum(intensity))
         self.Tp = self.get_Tp()
-        self.P0 = np.trapezoid(intensity, T) / self.beta
+        self.P0 = integrate.trapezoid(intensity, T) / self.beta
 
         return
 
@@ -419,7 +420,7 @@ class TSDC:
         except (ValueError, RuntimeError):
             pass
         self.tau0 = self.get_tau0()
-        self.P0 = np.trapezoid(intensity, T) / self.beta
+        self.P0 = integrate.trapezoid(intensity, T) / self.beta
         return
 
     def fisher_matrix(self, T, intensity):

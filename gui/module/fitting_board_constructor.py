@@ -18,11 +18,12 @@ def fitting_board_constructor(db, param):
         st.header(t("fitting_dashboard"))
 
         # Settings summary row
-        set_col = st.columns([5, 2, 2, 2])
+        set_col = st.columns([4, 2, 2, 2, 2])
         set_col[0].metric(t("fitting_model"), st.session_state['MixtureModel'])
         set_col[1].metric("K", st.session_state['K'])
         set_col[2].metric(t("background_model"), st.session_state['BackgroundModel'])
         set_col[3].metric(t("trial_frequency"), st.session_state['TrialFrequency'])
+        set_col[4].metric(t("fitting_method"), st.session_state.get('FittingMethod', 'sampling'))
 
         # Chart area with controls
         chart_col = st.columns([1, 5])
@@ -39,13 +40,6 @@ def fitting_board_constructor(db, param):
 
         # Buttons
         if chart_col[0].button(t("start_optimization")):
-            st.session_state['Fitted'] = True
-        if chart_col[0].button(t("refresh")):
-            refresh()
-            st.rerun()
-
-        # Run fitting
-        if st.session_state['Fitted'] and st.session_state['ModelInstance'] is not None:
             with st.spinner(t("fitting_spinner")):
                 st.session_state['ModelInstance'], info = run(
                     st.session_state['ModelInstance'],
@@ -53,7 +47,15 @@ def fitting_board_constructor(db, param):
                     db[data_column[1]],
                     st.session_state['TrialFrequency']
                 )
+            st.session_state['Fitted'] = True
+            st.session_state['FitInfo'] = info
+        if chart_col[0].button(t("refresh")):
+            refresh()
+            st.rerun()
 
+        # Display fitting results
+        if st.session_state['Fitted'] and st.session_state.get('FitInfo') is not None:
+            info = st.session_state['FitInfo']
             ref_id = info['index_best']
 
             # Metrics row
@@ -78,7 +80,14 @@ def fitting_board_constructor(db, param):
                 metric_col[i].caption(param[param_name])
                 if param_name in param_val:
                     for k in range(K):
-                        metric_col[i].metric(f'Model #{k}', "{:5.3f}".format(param_val[param_name][k]))
+                        val = param_val[param_name][k]
+                        val = float(np.ravel(val)[0]) if hasattr(val, '__len__') else float(val)
+                        # Use scientific notation for very small/large values (e.g. tau0)
+                        if abs(val) < 0.01 or abs(val) > 1e6:
+                            fmt = "{:.3e}"
+                        else:
+                            fmt = "{:5.3f}"
+                        metric_col[i].metric(f'Model #{k}', fmt.format(val))
                 fitting_summary[param_name] = list(param[param_name]) if isinstance(param[param_name],
                                                                                      list) else param[param_name]
 

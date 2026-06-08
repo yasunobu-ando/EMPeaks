@@ -1,5 +1,6 @@
 """ユーティリティ関数"""
 import streamlit as st
+import numpy as np
 
 # EMPeaks imports
 import sys
@@ -11,6 +12,7 @@ try:
     from EMPeaks.LorentzianMixture import LorentzianMixtureModel
     from EMPeaks.PseudoVoigtMixture import PseudoVoigtMixtureModel
     from EMPeaks.DoniachSunjicMixture import DoniachSunjicMixtureModel
+    from EMPeaks.TSDCMixture import TSDCMixtureModel
     EMPEAKS_AVAILABLE = True
 except ImportError:
     EMPEAKS_AVAILABLE = False
@@ -18,6 +20,7 @@ except ImportError:
     LorentzianMixtureModel = None
     PseudoVoigtMixtureModel = None
     DoniachSunjicMixtureModel = None
+    TSDCMixtureModel = None
 
 
 def init_application():
@@ -32,6 +35,13 @@ def init_application():
         st.session_state['MaxIteration'] = 1000
         st.session_state['Fitted'] = False
         st.session_state['Data'] = None
+        st.session_state['FittingMethod'] = 'sampling'
+        # TSDC-specific parameters
+        st.session_state['TSDC_beta'] = 0.0833
+        st.session_state['TSDC_T_min'] = 300
+        st.session_state['TSDC_T_max'] = 900
+        st.session_state['TSDC_Ea_min'] = 0.05
+        st.session_state['TSDC_Ea_max'] = 3.0
         st.session_state['init'] = True
 
 
@@ -39,10 +49,10 @@ def init_model(K, x_min, x_max):
     """モデルインスタンスを初期化"""
     if not EMPEAKS_AVAILABLE:
         return None
-    
+
     model_type = st.session_state['MixtureModel']
     background = st.session_state['BackgroundModel']
-    
+
     if model_type == 'GaussianMixture':
         return GaussianMixtureModel(K=K, x_min=x_min, x_max=x_max, background=background)
     elif model_type == 'LorentzianMixture':
@@ -51,22 +61,67 @@ def init_model(K, x_min, x_max):
         return PseudoVoigtMixtureModel(K=K, x_min=x_min, x_max=x_max, background=background)
     elif model_type == 'DoniachSunjicMixture':
         return DoniachSunjicMixtureModel(K=K, x_min=x_min, x_max=x_max, background=background)
+    elif model_type == 'TSDCMixture':
+        return TSDCMixtureModel(
+            K=K,
+            beta=st.session_state['TSDC_beta'],
+            T_min=st.session_state['TSDC_T_min'],
+            T_max=st.session_state['TSDC_T_max'],
+            Ea_min=st.session_state['TSDC_Ea_min'],
+            Ea_max=st.session_state['TSDC_Ea_max'],
+            background=background
+        )
     return None
 
 
 def run(model_instance, x_val, y_val, trial):
     """フィッティングを実行"""
-    out_info = model_instance.sampling(
-        x=x_val, 
-        intensity=y_val, 
-        trial=trial,
-        max_iter=st.session_state['MaxIteration'],
-        r_eps=st.session_state['Threshold']
-    )
+    fitting_method = st.session_state.get('FittingMethod', 'sampling')
+    x_arr = np.array(x_val, dtype=float)
+    y_arr = np.array(y_val, dtype=float)
+
+    if fitting_method == 'sampling':
+        out_info = model_instance.sampling(
+            x=x_arr,
+            intensity=y_arr,
+            trial=trial,
+            max_iter=st.session_state['MaxIteration'],
+            r_eps=st.session_state['Threshold']
+        )
+    elif fitting_method == 'leastsq':
+        run_info = model_instance.leastsq(x_arr, y_arr, stdout=False)
+        out_info = _wrap_single_run_info(run_info)
+    elif fitting_method == 'leastsq_tau0':
+        run_info = model_instance.leastsq_tau0(x_arr, y_arr, stdout=False)
+        out_info = _wrap_single_run_info(run_info)
+    elif fitting_method == 'l2_div':
+        run_info = model_instance.l2_div(x_arr, y_arr, stdout=False)
+        out_info = _wrap_single_run_info(run_info)
+    else:
+        out_info = model_instance.sampling(
+            x=x_arr,
+            intensity=y_arr,
+            trial=trial,
+            max_iter=st.session_state['MaxIteration'],
+            r_eps=st.session_state['Threshold']
+        )
+
     return model_instance, out_info
+
+
+def _wrap_single_run_info(run_info):
+    """単一実行の結果を sampling 互換の info 形式に変換"""
+    return {
+        'index_best': 0,
+        'LL_hist': np.array([run_info.get('LL', np.nan)]),
+        'RMSE_hist': np.array([run_info.get('RMSE', np.nan)]),
+        'time_hist': np.array([run_info.get('total_time', np.nan)]),
+        'iter_hist': np.array([run_info.get('total_iter', np.nan)]),
+    }
 
 
 def refresh():
     """状態をリフレッシュ"""
     st.session_state['Fitted'] = False
+    st.session_state['FitInfo'] = None
     st.cache_data.clear()
