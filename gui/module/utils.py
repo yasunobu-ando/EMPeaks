@@ -33,11 +33,13 @@ def init_application():
         st.session_state['BackgroundModel'] = 'none'
         st.session_state['TrialFrequency'] = 1
         st.session_state['ModelInstance'] = None
-        st.session_state['Threshold'] = 1e-8
+        st.session_state['Threshold'] = 1e-9
         st.session_state['MaxIteration'] = 1000
         st.session_state['Fitted'] = False
         st.session_state['Data'] = None
         st.session_state['FittingMethod'] = 'sampling'
+        st.session_state['TriggerOptimization'] = False
+        st.session_state['FitParam'] = None
         # TSDC-specific parameters
         st.session_state['TSDC_beta'] = 0.0833
         st.session_state['TSDC_T_min'] = 300

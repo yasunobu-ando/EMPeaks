@@ -1,12 +1,33 @@
 """Model configuration module"""
 import streamlit as st
-from module.utils import init_model
+from module.utils import init_model, refresh
 from module.i18n import t
 
 MODEL_LIST = ['GaussianMixture', 'LorentzianMixture', 'PseudoVoigtMixture', 'DoniachSunjicMixture', 'VoigtMixture', 'TSDCMixture']
 BACKGROUND_LIST = ['none', 'uniform', 'linear', 'squareroot', 'ramp_sum']
 FITTING_METHOD_STANDARD = ['sampling']
 FITTING_METHOD_TSDC = ['sampling', 'leastsq', 'leastsq_tau0', 'l2_div']
+
+_THRESHOLD_SEQUENCE = [
+    1e-5, 5e-6,
+    1e-6, 5e-7,
+    1e-7, 5e-8,
+    1e-8, 5e-9,
+    1e-9, 5e-10,
+    1e-10, 5e-11,
+    1e-11, 5e-12,
+    1e-12,
+]
+
+
+def _threshold_label(x: float) -> str:
+    exponent = int(f"{x:.0e}".split("e")[1])
+    mantissa = x / (10 ** exponent)
+    if abs(mantissa - 1) < 1e-12:
+        return f"1e{exponent}"
+    elif abs(mantissa - 5) < 1e-12:
+        return f"5e{exponent}"
+    return f"{x:.0e}"
 
 
 def model_constructor(db, x_variable):
@@ -24,12 +45,12 @@ def model_constructor(db, x_variable):
         is_tsdc = st.session_state['MixtureModel'] == 'TSDCMixture'
 
         # K (Component Number)
-        st.session_state['K'] = int(st.sidebar.number_input(
+        st.sidebar.number_input(
             t("k_component_number"),
             min_value=1,
             max_value=10,
-            value=st.session_state.get('K', 3),
-        ))
+            key='K',
+        )
 
         # Select Background Model
         st.session_state['BackgroundModel'] = st.sidebar.selectbox(
@@ -78,28 +99,38 @@ def model_constructor(db, x_variable):
             )
 
         # Input Trial Frequency
-        st.session_state['TrialFrequency'] = int(st.sidebar.number_input(
+        st.sidebar.number_input(
             t("input_trial_frequency"),
             min_value=1,
             max_value=30,
-            value=st.session_state.get('TrialFrequency', 1),
             format="%d",
-        ))
+            key='TrialFrequency',
+        )
 
         # Convergence threshold for LL
-        st.session_state['Threshold'] = st.sidebar.number_input(
+        st.sidebar.select_slider(
             t("convergence_threshold"),
-            value=st.session_state.get('Threshold', 1e-8),
-            step=5e-8,
-            format="%f",
+            options=_THRESHOLD_SEQUENCE,
+            format_func=_threshold_label,
+            key='Threshold',
         )
 
         # Max iteration
-        st.session_state['MaxIteration'] = int(st.sidebar.number_input(
+        st.sidebar.number_input(
             t("max_iteration"),
-            value=st.session_state.get('MaxIteration', 1000),
+            min_value=100,
+            step=100,
             format="%d",
-        ))
+            key='MaxIteration',
+        )
+
+        # Buttons
+        st.sidebar.divider()
+        if st.sidebar.button(t("start_optimization"), use_container_width=True):
+            st.session_state['TriggerOptimization'] = True
+        if st.sidebar.button(t("refresh"), use_container_width=True):
+            refresh()
+            st.rerun()
 
     # ModelInstance が None のときだけ初期化（結果は Start Optimization まで保持）
     if st.session_state.get('ModelInstance') is None:
