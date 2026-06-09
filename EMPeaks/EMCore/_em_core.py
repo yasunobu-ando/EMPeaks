@@ -10,11 +10,10 @@ from EMPeaks.EMCore.exceptions import BackgroundTypeError, ParameterError
 from EMPeaks.EMCore.background_factory import BackgroundFactory
 from EMPeaks.EMCore.visualizer import Visualizer
 from EMPeaks.EMCore.fitting_engine import FittingEngine
-from EMPeaks.Background import UniformModel, SquareRootModel, LinearModel, TriangleModel, RampModel
+from EMPeaks.Background import UniformModel, SquareRootModel, LinearModel, TriangleModel, RampModel, SplineBasisModel
 from scipy import integrate
 from scipy import optimize
 import numpy as np
-import matplotlib.pyplot as plt
 import copy
 import time
 
@@ -31,7 +30,7 @@ class EMCore:
     DEFAULT_R_EPS = 1e-9
 
     def __init__(self, K=2, x_min=-300, x_max=300, sigma_min=0.1, sigma_max=50,
-                 background='none', k_ramp=5):
+                 background='none', k_ramp=5, degree_spline=3, n_section=5):
         self.K = K
         self.x_min = x_min
         self.x_max = x_max
@@ -39,39 +38,62 @@ class EMCore:
         self.sigma_max = sigma_max
         self.background = background
         self.dx = 1.0
-        self.k_ramp = k_ramp  # Store k_ramp for ramp_sum
 
         # Initialize BackgroundFactory for delegation
-        self._bg_factory = BackgroundFactory(x_min, x_max, k_ramp)
+        self._bg_factory = BackgroundFactory(x_min, x_max, k_ramp, degree_spline, n_section)
 
         self.model = [Gaussian(x_min, x_max, sigma_min, sigma_max) for k in range(self.K)]
         self.pi = np.ones(self.K) / self.K
 
         # Initialize background models using factory method
-        if self.background == 'ramp_sum':
-            print("RampSum Background is set.")
-            self.ramp_node = np.linspace(self.x_min, self.x_max, self.k_ramp + 1, endpoint=False)
-            background_models = self._bg_factory.create(self.background)
-            self.K_all = K + len(background_models)
-            self._update_mixture_weights(len(background_models), use_random=True)
-        elif self.background == 'none':
+        if self.background == 'none':
             self.K_all = K
-        elif self.background in ('uniform', 'squareroot', 'linear'):
-            background_models = self._bg_factory.create(self.background)
-            self.K_all = K + len(background_models)
-            self._update_mixture_weights(len(background_models))
-            self.model.extend(background_models)
         else:
-            print("Setting Background is not implemented.")
-            self.K_all = K
-
-        # Add ramp_sum models after weight update
-        if self.background == 'ramp_sum':
+            if self.background == 'ramp_sum':
+                print("RampSum Background is set.")
+            elif self.background == 'b_spline':
+                print("B-Spline Background is set.")
+            background_models = self._bg_factory.create(self.background)
+            self.K_all = K + len(background_models)
+            use_random = self.background in ('ramp_sum', 'b_spline')
+            self._update_mixture_weights(len(background_models), use_random=use_random)
             self.model.extend(background_models)
 
         self.N_tot = 1.0
         self.N = self.pi * self.N_tot
         self.Dirichlet_alpha = np.ones(self.K_all)
+
+    @property
+    def k_ramp(self):
+        return self._bg_factory.k_ramp
+
+    @property
+    def n_spline_basis(self):
+        return self._bg_factory.n_spline_basis
+
+    @property
+    def degree_spline(self):
+        return self._bg_factory.degree_spline
+
+    @property
+    def n_section(self):
+        return self._bg_factory.n_section
+
+    @property
+    def ramp_node(self):
+        return self._bg_factory.ramp_node
+
+    def _bg_type_int(self) -> int:
+        return BackgroundFactory.BG_TYPE_MAP.get(self.background, 0)
+
+    def _build_rust_extra_kw(self, x: np.ndarray) -> dict:
+        if self.background == "b_spline":
+            x_f64 = np.ascontiguousarray(x, dtype=np.float64)
+            n_bg = self.K_all - self.K
+            return {'spline_basis_preds': [
+                self.model[self.K + i].predict(x_f64).tolist() for i in range(n_bg)
+            ]}
+        return {}
 
     def set_param(self, **param):
         """
@@ -125,17 +147,12 @@ class EMCore:
         """
         if self.background == 'none':
             self.K_all = self.K
-        elif self.background == 'ramp_sum':
-            self.K_all = self.K + self.k_ramp + 2
-            self.ramp_node = np.linspace(self.x_min, self.x_max, self.k_ramp + 1, endpoint=False)
-            background_models = self._bg_factory.create(self.background)
-            self.model.extend(background_models)
-        elif self.background in ('uniform', 'squareroot', 'linear'):
-            self.K_all = self.K + 1
-            # Pass s_tri if provided for linear background
-            s_tri = param.get('s_tri', None)
-            background_models = self._bg_factory.create(self.background, s_tri=s_tri)
-            self.model.extend(background_models)
+            return
+        s_tri = param.get('s_tri', None)
+        background_models = self._bg_factory.create(self.background, s_tri=s_tri)
+        self.model.extend(background_models)
+        self.K_all = self.K + len(background_models)
+
 
     def extract_single_params(self, param_set, **param):
         org_K = self.K
@@ -236,9 +253,12 @@ class EMCore:
             self._bg_factory.update_range(self.x_min, self.x_max)
             self.model[-1] = self._bg_factory.create(self.background)[0]
         elif self.background == 'ramp_sum':
-            # For ramp_sum, replace the background models (last k_ramp+2 models)
-            n_bg = self.k_ramp + 2
             self.model = self.model[:self.K]  # Keep only peak models
+            self._bg_factory.update_range(self.x_min, self.x_max)
+            background_models = self._bg_factory.create(self.background)
+            self.model.extend(background_models)
+        elif self.background == 'b_spline':
+            self.model = self.model[:self.K]
             self._bg_factory.update_range(self.x_min, self.x_max)
             background_models = self._bg_factory.create(self.background)
             self.model.extend(background_models)
@@ -425,7 +445,7 @@ class EMCore:
 
     def adapted_em(self, x, intensity, max_iter, r_eps, stdout):
         from EMPeaks.EMCore._backend import get_backend
-        if get_backend() == "rust" and self.background in {"none", "uniform", "squareroot", "linear"} and type(self).__name__ == "GaussianMixtureModel":
+        if get_backend() == "rust" and self.background in {"none", "uniform", "squareroot", "linear", "b_spline"} and type(self).__name__ == "GaussianMixtureModel":
             return self._adapted_em_rust(x, intensity, max_iter, r_eps, stdout)
         return self._adapted_em_python(x, intensity, max_iter, r_eps, stdout)
 
@@ -442,13 +462,15 @@ class EMCore:
         fix_mu    = [bool(getattr(self.model[k], 'fix_mu',    False)) for k in range(self.K)]
         fix_sigma = [bool(getattr(self.model[k], 'fix_sigma', False)) for k in range(self.K)]
 
-        bg_type = {"none": 0, "uniform": 1, "squareroot": 2, "linear": 3}.get(self.background, 0)
+        bg_type = self._bg_type_int()
         s_tri_in = float(self.model[-1].s_tri) if self.background == "linear" else 0.0
+        extra_kw = self._build_rust_extra_kw(x)
 
         total_iter, ll_hist, res_hist, s_tri_out = empeaks_rust_core.run_em_loop(
             x.astype(np.float64), intensity.astype(np.float64),
             mu, sigma, pi, da, fix_mu, fix_sigma, max_iter, r_eps,
             self.x_min, self.x_max, bg_type, s_tri_in,
+            **extra_kw,
         )
 
         # 結果を Python 側モデルに反映
@@ -585,6 +607,15 @@ class EMCore:
         print('   N:         ' + ('{:6.3e}       ' * len(param['pi'])).format(*param['pi'] * self.N_tot))
         print('   pi:        ' + ('{:6.3e}       ' * len(param['pi'])).format(*param['pi']))
         return
+
+    def plot(self, x, intensity, show=True):
+        return Visualizer.plot(
+            x_data=x, intensity=intensity, model=self.model,
+            N=self.N, N_tot=self.N_tot, predict_func=self.predict,
+            x_min=self.x_min, x_max=self.x_max, dx=self.dx,
+            K=self.K, background=self.background,
+            show=show
+        )
 
     def e_step(self, x):
         eps = self.EPSILON_PREDICT

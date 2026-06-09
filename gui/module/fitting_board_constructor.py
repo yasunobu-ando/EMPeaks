@@ -145,10 +145,17 @@ def fitting_board_constructor(db, param):
 
             if check_plot['Background Model'] and len(mi.model) > display_K:
                 has_series = True
-                bg_label = f"BG: {st.session_state['BackgroundModel']}"
-                bg_col = f"BG_{st.session_state['BackgroundModel']}"
-                y_bg = pd.Series(mi.model[-1].predict(x_data.values) * mi.pi[-1] * mi.N_tot,
-                                 name=bg_col)
+                bg_type = st.session_state['BackgroundModel']
+                bg_label = f"BG: {bg_type}"
+                bg_col = f"BG_{bg_type}"
+
+                if bg_type in ('ramp_sum', 'b_spline'):
+                    num_bg_models = mi.K_all - display_K
+                    y_bg_arr = np.sum([mi.model[display_K + k].predict(x_data.values) * mi.pi[display_K + k] * mi.N_tot for k in range(num_bg_models)], axis=0)
+                else:
+                    y_bg_arr = mi.model[-1].predict(x_data.values) * mi.pi[-1] * mi.N_tot
+
+                y_bg = pd.Series(y_bg_arr, name=bg_col)
                 fitting_summary[bg_label] = y_bg.tolist()
                 tmp_series = pd.concat([tmp_series, y_bg], axis=1)
 

@@ -6,10 +6,8 @@ from ._tsdc import TSDC
 from EMPeaks.EMCore._em_core import EMCore
 from scipy import integrate
 from scipy import optimize
-import matplotlib.pyplot as plt
 import numpy as np
 import time
-import copy
 
 
 class TSDCMixtureModel(EMCore):
@@ -21,8 +19,8 @@ class TSDCMixtureModel(EMCore):
 
     """
     def __init__(self, K=2, beta=0.0833, T_min=300, T_max=900, Ea_min=0.05, Ea_max=3.0,
-                 background='none', k_ramp=0):
-        super().__init__(K=K, x_min=0, x_max=10, background=background, k_ramp=k_ramp)
+                 background='none', k_ramp=0, degree_spline=3, n_section=5):
+        super().__init__(K=K, x_min=0, x_max=10, background=background, k_ramp=k_ramp, degree_spline=degree_spline, n_section=n_section)
         self.beta = beta
         self.T_min = T_min
         self.T_max = T_max
@@ -44,7 +42,7 @@ class TSDCMixtureModel(EMCore):
 
     def adapted_em(self, x, intensity, max_iter, r_eps, stdout):
         from EMPeaks.EMCore._backend import get_backend
-        if get_backend() == "rust" and self.background in {"none", "uniform", "squareroot", "linear"}:
+        if get_backend() == "rust" and self.background in {"none", "uniform", "squareroot", "linear", "b_spline"}:
             return self._adapted_em_rust_tsdc(x, intensity, max_iter, r_eps, stdout)
         return self._adapted_em_python(x, intensity, max_iter, r_eps, stdout)
 
@@ -66,8 +64,9 @@ class TSDCMixtureModel(EMCore):
         fix_ea = [bool(getattr(self.model[k], 'fix_Ea', False)) for k in range(self.K)]
         fix_tp = [bool(getattr(self.model[k], 'fix_Tp', False)) for k in range(self.K)]
 
-        bg_type = {"none": 0, "uniform": 1, "squareroot": 2, "linear": 3}.get(self.background, 0)
+        bg_type = self._bg_type_int()
         s_tri_in = float(self.model[-1].s_tri) if self.background == "linear" else 0.0
+        extra_kw = self._build_rust_extra_kw(t_f64)
 
         total_iter, ll_hist_np, res_hist_np, s_tri_out = empeaks_rust_core.run_tsdc_em_loop(
             t_f64, int_f64,
@@ -78,6 +77,7 @@ class TSDCMixtureModel(EMCore):
             self.Ea_min, self.Ea_max,
             self.T_min, self.T_max,
             max_iter, r_eps, bg_type, s_tri_in,
+            **extra_kw,
         )
 
         for k in range(self.K):

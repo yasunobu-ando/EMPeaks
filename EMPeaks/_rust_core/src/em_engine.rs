@@ -34,15 +34,17 @@ pub fn run_em_loop(
     x_max: f64,
     bg_type: u8,
     mut s_tri: f64,
+    extra_bg_preds: &[Vec<f64>],
 ) -> (usize, Vec<f64>, Vec<f64>, f64) {
     let k_peaks = mu.len();
-    let k_all = k_peaks + if bg_type != background::BG_NONE { 1 } else { 0 };
+    let n_bg = if bg_type == background::BG_NONE { 0 } else if bg_type == background::BG_SPLINE { extra_bg_preds.len() } else { 1 };
+    let k_all = k_peaks + n_bg;
     let mut predictions = vec![vec![0.0; x.len()]; k_all];
     let mut mixture = vec![0.0; x.len()];
     let mut gamma = vec![vec![0.0; x.len()]; k_all];
 
     gaussian_predict_all_inplace(x, mu, sigma, &mut predictions[0..k_peaks]);
-    update_predictions_with_bg_inplace(&mut predictions, k_peaks, bg_type, x, x_min, x_max, s_tri);
+    update_predictions_with_bg_inplace(&mut predictions, k_peaks, bg_type, x, x_min, x_max, s_tri, extra_bg_preds);
     let mut ll_0 = em_gamma_ll::compute_gamma_and_ll_inplace(intensity, &predictions, pi, &mut mixture, &mut gamma);
 
     let mut ll_hist = vec![ll_0];
@@ -63,7 +65,7 @@ pub fn run_em_loop(
             sigma[k] = new_sigma;
         }
 
-        // Background MLE (only for linear)
+        // Background MLE (only for linear; spline basis functions are fixed)
         if bg_type == background::BG_LINEAR {
             let w_bg: Vec<f64> = intensity.iter().zip(gamma[k_peaks].iter())
                 .map(|(&i, &g)| i * g).collect();
@@ -71,7 +73,7 @@ pub fn run_em_loop(
         }
 
         gaussian_predict_all_inplace(x, mu, sigma, &mut predictions[0..k_peaks]);
-        update_predictions_with_bg_inplace(&mut predictions, k_peaks, bg_type, x, x_min, x_max, s_tri);
+        update_predictions_with_bg_inplace(&mut predictions, k_peaks, bg_type, x, x_min, x_max, s_tri, extra_bg_preds);
         let ll = em_gamma_ll::compute_gamma_and_ll_inplace(intensity, &predictions, pi, &mut mixture, &mut gamma);
 
         let residual = (ll - ll_0) / ll_0.abs();
@@ -83,7 +85,7 @@ pub fn run_em_loop(
             break;
         }
         ll_0 = ll;
-            }
+    }
     (total_iter, ll_hist, res_hist, s_tri)
 }
 
@@ -103,8 +105,13 @@ fn update_predictions_with_bg_inplace(
     x_min: f64,
     x_max: f64,
     s_tri: f64,
+    extra_bg_preds: &[Vec<f64>],
 ) {
-    if bg_type != background::BG_NONE {
+    if bg_type == background::BG_SPLINE {
+        for (i, bp) in extra_bg_preds.iter().enumerate() {
+            preds[k_peaks + i].copy_from_slice(bp);
+        }
+    } else if bg_type != background::BG_NONE {
         background::predict_inplace(bg_type, x, x_min, x_max, s_tri, &mut preds[k_peaks]);
     }
 }
@@ -135,10 +142,12 @@ pub fn run_pv_em_loop(
     r_eps: f64,
     bg_type: u8,
     mut s_tri: f64,
+    extra_bg_preds: &[Vec<f64>],
 ) -> (usize, Vec<f64>, Vec<f64>, f64) {
     let k_peaks = x0.len();
 
-    let k_all = k_peaks + if bg_type != background::BG_NONE { 1 } else { 0 };
+    let n_bg = if bg_type == background::BG_NONE { 0 } else if bg_type == background::BG_SPLINE { extra_bg_preds.len() } else { 1 };
+    let k_all = k_peaks + n_bg;
     let mut predictions = vec![vec![0.0; x.len()]; k_all];
     let mut mixture = vec![0.0; x.len()];
     let mut gamma = vec![vec![0.0; x.len()]; k_all];
@@ -146,7 +155,7 @@ pub fn run_pv_em_loop(
     predictions[0..k_peaks].par_iter_mut().enumerate().for_each(|(k, pred)| {
         pseudo_voigt::predict_inplace(x, x0[k], gamma_pv[k], eta[k], x_min, x_max, pred);
     });
-    update_predictions_with_bg_inplace(&mut predictions, k_peaks, bg_type, x, x_min, x_max, s_tri);
+    update_predictions_with_bg_inplace(&mut predictions, k_peaks, bg_type, x, x_min, x_max, s_tri, extra_bg_preds);
     let mut ll_0 = em_gamma_ll::compute_gamma_and_ll_inplace(intensity, &predictions, pi, &mut mixture, &mut gamma);
 
     let mut ll_hist = vec![ll_0];
@@ -190,7 +199,7 @@ pub fn run_pv_em_loop(
         predictions[0..k_peaks].par_iter_mut().enumerate().for_each(|(k, pred)| {
             pseudo_voigt::predict_inplace(x, x0[k], gamma_pv[k], eta[k], x_min, x_max, pred);
         });
-        update_predictions_with_bg_inplace(&mut predictions, k_peaks, bg_type, x, x_min, x_max, s_tri);
+        update_predictions_with_bg_inplace(&mut predictions, k_peaks, bg_type, x, x_min, x_max, s_tri, extra_bg_preds);
         let ll = em_gamma_ll::compute_gamma_and_ll_inplace(intensity, &predictions, pi, &mut mixture, &mut gamma);
 
         let residual = (ll - ll_0) / ll_0.abs();
@@ -224,10 +233,12 @@ pub fn run_lorentzian_em_loop(
     r_eps: f64,
     bg_type: u8,
     mut s_tri: f64,
+    extra_bg_preds: &[Vec<f64>],
 ) -> (usize, Vec<f64>, Vec<f64>, f64) {
     let k_peaks = x0.len();
 
-    let k_all = k_peaks + if bg_type != background::BG_NONE { 1 } else { 0 };
+    let n_bg = if bg_type == background::BG_NONE { 0 } else if bg_type == background::BG_SPLINE { extra_bg_preds.len() } else { 1 };
+    let k_all = k_peaks + n_bg;
     let mut predictions = vec![vec![0.0; x.len()]; k_all];
     let mut mixture = vec![0.0; x.len()];
     let mut gamma = vec![vec![0.0; x.len()]; k_all];
@@ -235,7 +246,7 @@ pub fn run_lorentzian_em_loop(
     predictions[0..k_peaks].par_iter_mut().enumerate().for_each(|(k, pred)| {
         lorentzian::predict_inplace(x, x0[k], gamma_lo[k], x_min, x_max, pred);
     });
-    update_predictions_with_bg_inplace(&mut predictions, k_peaks, bg_type, x, x_min, x_max, s_tri);
+    update_predictions_with_bg_inplace(&mut predictions, k_peaks, bg_type, x, x_min, x_max, s_tri, extra_bg_preds);
     let mut ll_0 = em_gamma_ll::compute_gamma_and_ll_inplace(intensity, &predictions, pi, &mut mixture, &mut gamma);
 
     let mut ll_hist = vec![ll_0];
@@ -265,7 +276,7 @@ pub fn run_lorentzian_em_loop(
         predictions[0..k_peaks].par_iter_mut().enumerate().for_each(|(k, pred)| {
             lorentzian::predict_inplace(x, x0[k], gamma_lo[k], x_min, x_max, pred);
         });
-        update_predictions_with_bg_inplace(&mut predictions, k_peaks, bg_type, x, x_min, x_max, s_tri);
+        update_predictions_with_bg_inplace(&mut predictions, k_peaks, bg_type, x, x_min, x_max, s_tri, extra_bg_preds);
         let ll = em_gamma_ll::compute_gamma_and_ll_inplace(intensity, &predictions, pi, &mut mixture, &mut gamma);
 
         let residual = (ll - ll_0) / ll_0.abs();
@@ -305,10 +316,12 @@ pub fn run_ds_em_loop(
     r_eps: f64,
     bg_type: u8,
     mut s_tri: f64,
+    extra_bg_preds: &[Vec<f64>],
 ) -> (usize, Vec<f64>, Vec<f64>, f64) {
     let k_peaks = x0.len();
 
-    let k_all = k_peaks + if bg_type != background::BG_NONE { 1 } else { 0 };
+    let n_bg = if bg_type == background::BG_NONE { 0 } else if bg_type == background::BG_SPLINE { extra_bg_preds.len() } else { 1 };
+    let k_all = k_peaks + n_bg;
     let mut predictions = vec![vec![0.0; x.len()]; k_all];
     let mut mixture = vec![0.0; x.len()];
     let mut gamma = vec![vec![0.0; x.len()]; k_all];
@@ -316,7 +329,7 @@ pub fn run_ds_em_loop(
     predictions[0..k_peaks].par_iter_mut().enumerate().for_each(|(k, pred)| {
         doniach_sunjic::predict_inplace(x, x0[k], gamma_ds[k], alpha[k], pred);
     });
-    update_predictions_with_bg_inplace(&mut predictions, k_peaks, bg_type, x, x_min, x_max, s_tri);
+    update_predictions_with_bg_inplace(&mut predictions, k_peaks, bg_type, x, x_min, x_max, s_tri, extra_bg_preds);
     let mut ll_0 = em_gamma_ll::compute_gamma_and_ll_inplace(intensity, &predictions, pi, &mut mixture, &mut gamma);
 
     let mut ll_hist = vec![ll_0];
@@ -350,7 +363,7 @@ pub fn run_ds_em_loop(
         predictions[0..k_peaks].par_iter_mut().enumerate().for_each(|(k, pred)| {
             doniach_sunjic::predict_inplace(x, x0[k], gamma_ds[k], alpha[k], pred);
         });
-        update_predictions_with_bg_inplace(&mut predictions, k_peaks, bg_type, x, x_min, x_max, s_tri);
+        update_predictions_with_bg_inplace(&mut predictions, k_peaks, bg_type, x, x_min, x_max, s_tri, extra_bg_preds);
         let ll = em_gamma_ll::compute_gamma_and_ll_inplace(intensity, &predictions, pi, &mut mixture, &mut gamma);
 
         let residual = (ll - ll_0) / ll_0.abs();
@@ -388,10 +401,12 @@ pub fn run_tsdc_em_loop(
     r_eps: f64,
     bg_type: u8,
     mut s_tri: f64,
+    extra_bg_preds: &[Vec<f64>],
 ) -> (usize, Vec<f64>, Vec<f64>, f64) {
     let k_peaks = ea.len();
 
-    let k_all = k_peaks + if bg_type != background::BG_NONE { 1 } else { 0 };
+    let n_bg = if bg_type == background::BG_NONE { 0 } else if bg_type == background::BG_SPLINE { extra_bg_preds.len() } else { 1 };
+    let k_all = k_peaks + n_bg;
     let mut predictions = vec![vec![0.0; t.len()]; k_all];
     let mut mixture = vec![0.0; t.len()];
     let mut gamma = vec![vec![0.0; t.len()]; k_all];
@@ -399,7 +414,7 @@ pub fn run_tsdc_em_loop(
     predictions[0..k_peaks].iter_mut().enumerate().for_each(|(k, pred)| {
         tsdc::predict_inplace(t, ea[k], tau0[k], beta, pred);
     });
-    update_predictions_with_bg_inplace(&mut predictions, k_peaks, bg_type, t, t_min, t_max, s_tri);
+    update_predictions_with_bg_inplace(&mut predictions, k_peaks, bg_type, t, t_min, t_max, s_tri, extra_bg_preds);
     let mut ll_0 = em_gamma_ll::compute_gamma_and_ll_inplace(intensity, &predictions, pi, &mut mixture, &mut gamma);
 
     let mut ll_hist = vec![ll_0];
@@ -435,7 +450,7 @@ pub fn run_tsdc_em_loop(
         predictions[0..k_peaks].iter_mut().enumerate().for_each(|(k, pred)| {
             tsdc::predict_inplace(t, ea[k], tau0[k], beta, pred);
         });
-        update_predictions_with_bg_inplace(&mut predictions, k_peaks, bg_type, t, t_min, t_max, s_tri);
+        update_predictions_with_bg_inplace(&mut predictions, k_peaks, bg_type, t, t_min, t_max, s_tri, extra_bg_preds);
         let ll = em_gamma_ll::compute_gamma_and_ll_inplace(intensity, &predictions, pi, &mut mixture, &mut gamma);
 
         let residual = (ll - ll_0) / ll_0.abs();
@@ -477,9 +492,11 @@ pub fn run_voigt_em_loop(
     r_eps: f64,
     bg_type: u8,
     mut s_tri: f64,
+    extra_bg_preds: &[Vec<f64>],
 ) -> (usize, Vec<f64>, Vec<f64>, f64) {
     let k_peaks = x0.len();
-    let k_all = k_peaks + if bg_type != background::BG_NONE { 1 } else { 0 };
+    let n_bg = if bg_type == background::BG_NONE { 0 } else if bg_type == background::BG_SPLINE { extra_bg_preds.len() } else { 1 };
+    let k_all = k_peaks + n_bg;
     let mut predictions = vec![vec![0.0; x.len()]; k_all];
     let mut mixture = vec![0.0; x.len()];
     let mut gamma = vec![vec![0.0; x.len()]; k_all];
@@ -487,7 +504,7 @@ pub fn run_voigt_em_loop(
     predictions[0..k_peaks].par_iter_mut().enumerate().for_each(|(k, pred)| {
         voigt::predict_inplace(x, x0[k], sigma_v[k], gamma_v[k], x_min, x_max, pred);
     });
-    update_predictions_with_bg_inplace(&mut predictions, k_peaks, bg_type, x, x_min, x_max, s_tri);
+    update_predictions_with_bg_inplace(&mut predictions, k_peaks, bg_type, x, x_min, x_max, s_tri, extra_bg_preds);
     let mut ll_0 = em_gamma_ll::compute_gamma_and_ll_inplace(
         intensity, &predictions, pi, &mut mixture, &mut gamma);
 
@@ -522,7 +539,7 @@ pub fn run_voigt_em_loop(
         predictions[0..k_peaks].par_iter_mut().enumerate().for_each(|(k, pred)| {
             voigt::predict_inplace(x, x0[k], sigma_v[k], gamma_v[k], x_min, x_max, pred);
         });
-        update_predictions_with_bg_inplace(&mut predictions, k_peaks, bg_type, x, x_min, x_max, s_tri);
+        update_predictions_with_bg_inplace(&mut predictions, k_peaks, bg_type, x, x_min, x_max, s_tri, extra_bg_preds);
         let ll = em_gamma_ll::compute_gamma_and_ll_inplace(
             intensity, &predictions, pi, &mut mixture, &mut gamma);
 
@@ -575,7 +592,7 @@ mod tests {
             &x, &intensity,
             &mut mu, &mut sigma, &mut pi,
             &da, &fix_mu, &fix_sigma, 3000, 1e-9,
-            x_min, x_max, 0, 0.0,
+            x_min, x_max, 0, 0.0, &[],
         );
         assert!(iters < 3000, "did not converge within 3000 iters");
         assert!(ll_hist.last().unwrap() > ll_hist.first().unwrap(),

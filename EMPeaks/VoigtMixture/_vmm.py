@@ -4,12 +4,8 @@
 
 from EMPeaks.VoigtMixture._voigt import Voigt
 from EMPeaks.EMCore._em_core import EMCore
-from EMPeaks.Background import UniformModel, SquareRootModel, LinearModel, TriangleModel, RampModel
-from scipy import integrate
-from scipy import optimize
 import matplotlib.pyplot as plt
 import numpy as np
-import copy
 import time
 
 
@@ -25,8 +21,8 @@ class VoigtMixtureModel(EMCore):
                  sigma_min=0.1, sigma_max=70,
                  gamma_min=0.1, gamma_max=70,
                  background='none', k_ramp=0,
-                 degree_spline=3, n_section=3):
-        super().__init__(K=K, x_min=x_min, x_max=x_max, background=background, k_ramp=k_ramp)
+                 degree_spline=3, n_section=5):
+        super().__init__(K=K, x_min=x_min, x_max=x_max, background=background, k_ramp=k_ramp, degree_spline=degree_spline, n_section=n_section)
         self.sigma_min = sigma_min
         self.sigma_max = sigma_max    
         self.gamma_min = gamma_min
@@ -78,7 +74,7 @@ class VoigtMixtureModel(EMCore):
     def adapted_em(self, x, intensity, max_iter, r_eps, stdout):
         from EMPeaks.EMCore._backend import get_backend
         if (get_backend() == "rust"
-                and self.background in {"none", "uniform", "squareroot", "linear"}):
+                and self.background in {"none", "uniform", "squareroot", "linear", "b_spline"}):
             return self._adapted_em_rust_voigt(x, intensity, max_iter, r_eps, stdout)
         return self._adapted_em_python(x, intensity, max_iter, r_eps, stdout)
 
@@ -98,17 +94,20 @@ class VoigtMixtureModel(EMCore):
         fix_sigma = [bool(self.model[k].fix_sigma)  for k in range(self.K)]
         fix_gamma = [bool(self.model[k].fix_gamma)  for k in range(self.K)]
 
-        bg_type   = {"none": 0, "uniform": 1, "squareroot": 2, "linear": 3}.get(self.background, 0)
-        s_tri_in  = float(self.model[-1].s_tri) if self.background == "linear" else 0.0
+        bg_type  = self._bg_type_int()
+        s_tri_in = float(self.model[-1].s_tri) if self.background == "linear" else 0.0
+        x_f64    = x.astype(np.float64)
+        extra_kw = self._build_rust_extra_kw(x_f64)
 
         total_iter, ll_hist, res_hist, s_tri_out = empeaks_rust_core.run_voigt_em_loop(
-            x.astype(np.float64), intensity.astype(np.float64),
+            x_f64, intensity.astype(np.float64),
             x0_arr, sigma_arr, gamma_arr, pi, da,
             fix_x0, fix_sigma, fix_gamma,
             self.x_min, self.x_max,
             self.sigma_min, self.sigma_max,
             self.gamma_min, self.gamma_max,
             max_iter, r_eps, bg_type, s_tri_in,
+            **extra_kw,
         )
 
         for k in range(self.K):

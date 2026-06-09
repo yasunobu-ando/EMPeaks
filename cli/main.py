@@ -36,7 +36,18 @@ def _launch_deck(args):
     import gui as _gui_pkg
     app_path = os.path.join(os.path.dirname(_gui_pkg.__file__), "app.py")
 
-    subprocess.run([
+    print(f"\nStarting EMPeaks Deck on port {args.port}. \nPress Ctrl+C to shut down.\n", flush=True)
+    proc = subprocess.Popen([
         sys.executable, "-m", "streamlit", "run", app_path,
         "--server.port", str(args.port),
     ])
+    try:
+        proc.wait()
+    except KeyboardInterrupt:
+        print("\nShutting down EMPeaks Deck...", flush=True)
+        proc.terminate()
+        try:
+            proc.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            proc.kill()
+    sys.exit(0)

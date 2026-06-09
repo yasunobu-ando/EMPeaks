@@ -10,6 +10,7 @@ from module.fitting_board_constructor import fitting_board_constructor
 from module.utils import init_application
 from module.i18n import init_language, t
 
+
 hide_st_style = """
 <style>
 footer:after{content: "; Copyright 2025 @ National Institute of Advanced Industrial Science and Technology (AIST)"}
