@@ -2,7 +2,14 @@
 # Copyright © 2023 National Institute of Advanced Industrial Science and Technology (AIST)
 # Author: Yasunobu ANDO
 
+import logging
+from typing import Dict, List, Optional, Union, Any
+
 from EMPeaks.EMCore._gaussian import Gaussian
+from EMPeaks.EMCore.exceptions import BackgroundTypeError, ParameterError
+from EMPeaks.EMCore.background_factory import BackgroundFactory
+from EMPeaks.EMCore.visualizer import Visualizer
+from EMPeaks.EMCore.fitting_engine import FittingEngine
 from EMPeaks.Background import UniformModel, SquareRootModel, LinearModel, TriangleModel, RampModel
 from scipy import integrate
 from scipy import optimize
@@ -11,8 +18,18 @@ import matplotlib.pyplot as plt
 import copy
 import time
 
+# Module logger
+logger = logging.getLogger(__name__)
+
 
 class EMCore:
+    # Class constants
+    INITIAL_BACKGROUND_WEIGHT = 1.0e-4
+    EPSILON_LOG = 1e-200
+    EPSILON_PREDICT = 1e-20
+    DEFAULT_MAX_ITER = 3000
+    DEFAULT_R_EPS = 1e-9
+
     def __init__(self, K=2, x_min=-300, x_max=300, sigma_min=0.1, sigma_max=50,
                  background='none', k_ramp=5):
         self.K = K
@@ -22,49 +39,36 @@ class EMCore:
         self.sigma_max = sigma_max
         self.background = background
         self.dx = 1.0
+        self.k_ramp = k_ramp  # Store k_ramp for ramp_sum
+
+        # Initialize BackgroundFactory for delegation
+        self._bg_factory = BackgroundFactory(x_min, x_max, k_ramp)
 
         self.model = [Gaussian(x_min, x_max, sigma_min, sigma_max) for k in range(self.K)]
         self.pi = np.ones(self.K) / self.K
 
-        if self.background == 'none':
-            self.K_all = K
-        elif self.background == 'uniform':
-            self.K_all = K + 1
-            self.pi = np.append(self.pi, 1.0e-4)
-            self.pi = self.pi / np.sum(self.pi)
-            self.model.append(UniformModel(self.x_min, self.x_max))
-        elif self.background == 'squareroot':
-            self.K_all = K + 1
-            self.pi = np.append(self.pi, 1.0e-4)
-            self.pi = self.pi / np.sum(self.pi)
-            self.model.append(SquareRootModel(self.x_min, self.x_max))
-        elif self.background == 'linear':
-            self.K_all = K + 1
-            self.pi = np.append(self.pi, 1.0e-4)
-            self.pi = self.pi / np.sum(self.pi)
-            self.model.append(LinearModel(self.x_min, self.x_max))
-        elif self.background == 'ramp_sum':
+        # Initialize background models using factory method
+        if self.background == 'ramp_sum':
             print("RampSum Background is set.")
-            self.k_ramp = k_ramp
-            self.K_all = K + self.k_ramp + 2
             self.ramp_node = np.linspace(self.x_min, self.x_max, self.k_ramp + 1, endpoint=False)
-            self.pi = np.append(self.pi, np.random.rand(self.k_ramp + 2))
-            self.pi = self.pi / np.sum(self.pi)
-            self.model.append(UniformModel(self.x_min, self.x_max))
-            for k in range(k_ramp):
-                 self.model.append(RampModel(self.ramp_node[k], self.ramp_node[k + 1], self.x_max))
-            self.model.append(TriangleModel(self.ramp_node[-1], self.x_max))
-        #elif self.background == 'sharley':
-        #    print("Sharley Background is set.")
-        #    self.K_all = K + 2
-        #    self.pi = np.append(self.pi, 1.0e-4)
-        #    self.pi = np.append(self.pi, 1.0e-4)
-        #    self.pi = self.pi / np.sum(self.pi)
-        #    self.model.append(UniformModel(self.x_min, self.x_max))
-        #    self.model.append(Sharley(self.K, self.x_min, self.x_max))
-        #    self.model[-1].peak_model.model = self.model[0:K]
+            background_models = self._bg_factory.create(self.background)
+            self.K_all = K + len(background_models)
+            self._update_mixture_weights(len(background_models), use_random=True)
+        elif self.background == 'none':
+            self.K_all = K
+        elif self.background in ('uniform', 'squareroot', 'linear'):
+            background_models = self._bg_factory.create(self.background)
+            self.K_all = K + len(background_models)
+            self._update_mixture_weights(len(background_models))
+            self.model.extend(background_models)
         else:
             print("Setting Background is not implemented.")
+            self.K_all = K
+
+        # Add ramp_sum models after weight update
+        if self.background == 'ramp_sum':
+            self.model.extend(background_models)
+
         self.N_tot = 1.0
         self.N = self.pi * self.N_tot
         self.Dirichlet_alpha = np.ones(self.K_all)
@@ -121,36 +125,17 @@ class EMCore:
         """
         if self.background == 'none':
             self.K_all = self.K
-
-        elif self.background == 'uniform':
-            self.K_all = self.K + 1
-            self.model.append(UniformModel(self.x_min, self.x_max))
-        elif self.background == 'squareroot':
-            self.K_all = self.K + 1
-            self.model.append(SquareRootModel(self.x_min, self.x_max))
-
-        elif self.background == 'linear':
-            self.K_all = self.K + 1
-            if ('s_tri' in param) and (0 <= param['s_tri'] <= 1.0):
-                self.model.append(LinearModel(self.x_min, self.x_max, s_tri=param['s_tri']))
-            else:
-                self.model.append(LinearModel(self.x_min, self.x_max))
-
         elif self.background == 'ramp_sum':
             self.K_all = self.K + self.k_ramp + 2
             self.ramp_node = np.linspace(self.x_min, self.x_max, self.k_ramp + 1, endpoint=False)
-            # self.pi = np.append(self.pi, np.random.rand(self.k_ramp + 2))
-            # self.pi = self.pi / np.sum(self.pi)
-            self.model.append(UniformModel(self.x_min, self.x_max))
-            for k in range(self.k_ramp):
-                self.model.append(RampModel(self.ramp_node[k], self.ramp_node[k + 1], self.x_max))
-            self.model.append(TriangleModel(self.ramp_node[-1], self.x_max))
-
-        # elif self.background == 'sharley':
-        #     self.K_all = self.K + 2
-        #     self.model.append(UniformModel(self.x_min, self.x_max))
-        #     self.model.append(Sharley(self.K, self.x_min, self.x_max))
-        #     self.model[-1].peak_model.model = self.model[0:self.K]
+            background_models = self._bg_factory.create(self.background)
+            self.model.extend(background_models)
+        elif self.background in ('uniform', 'squareroot', 'linear'):
+            self.K_all = self.K + 1
+            # Pass s_tri if provided for linear background
+            s_tri = param.get('s_tri', None)
+            background_models = self._bg_factory.create(self.background, s_tri=s_tri)
+            self.model.extend(background_models)
 
     def extract_single_params(self, param_set, **param):
         org_K = self.K
@@ -211,6 +196,22 @@ class EMCore:
 
         return _tmp_param, _tmp_index
 
+    def _update_mixture_weights(self, n_background_models, use_random=False):
+        """背景モデル追加時に混合重みを更新
+
+        Args:
+            n_background_models: 追加する背景モデルの数
+            use_random: Trueならランダム初期化、Falseなら定数初期化
+        """
+        if n_background_models == 0:
+            return
+        if use_random:
+            new_weights = np.random.rand(n_background_models)
+        else:
+            new_weights = np.full(n_background_models, self.INITIAL_BACKGROUND_WEIGHT)
+        self.pi = np.append(self.pi, new_weights)
+        self.pi = self.pi / np.sum(self.pi)
+
     def init_param_uniform(self):
         self.pi = np.random.rand(self.K_all)
         self.pi = self.pi / self.pi.sum()
@@ -221,7 +222,7 @@ class EMCore:
         return np.sum([self.pi[k] * self.model[k].predict(x) for k in range(self.K_all)], axis=0)
 
     def log_likelihood(self, x, intensity):
-        return np.sum(intensity * np.log(self.predict(x) + 1e-200))
+        return np.sum(intensity * np.log(self.predict(x) + self.EPSILON_LOG))
 
     def fit(self, x, intensity, method='adapted_em', max_iter=3000, r_eps=1e-9,
             stdout=True, trial=10, criteria='likelihood'):
@@ -229,20 +230,18 @@ class EMCore:
 
         self.x_min = np.min(x)
         self.x_max = np.max(x)
-        if self.background == "uniform":
-            self.model[-1] = UniformModel(self.x_min, self.x_max)
-        if self.background == "squareroot":
-            self.model[-1] = SquareRootModel(self.x_min, self.x_max)
-        if self.background == "linear":
-            self.model[-1] = LinearModel(self.x_min, self.x_max)
+
+        # Recreate background model with updated x_min/x_max
+        if self.background in ('uniform', 'squareroot', 'linear'):
+            self._bg_factory.update_range(self.x_min, self.x_max)
+            self.model[-1] = self._bg_factory.create(self.background)[0]
         elif self.background == 'ramp_sum':
-            self.model.append(UniformModel(self.x_min, self.x_max))
-            for k in range(self.k_ramp):
-                self.model.append(RampModel(self.ramp_node[k], self.ramp_node[k + 1], self.x_max))
-            self.model.append(TriangleModel(self.ramp_node[-1], self.x_max))
-        # elif self.background == 'sharley':
-        #     self.model.append(UniformModel(self.x_min, self.x_max))
-        #     self.model.append(Sharley(self.K, self.x_min, self.x_max))
+            # For ramp_sum, replace the background models (last k_ramp+2 models)
+            n_bg = self.k_ramp + 2
+            self.model = self.model[:self.K]  # Keep only peak models
+            self._bg_factory.update_range(self.x_min, self.x_max)
+            background_models = self._bg_factory.create(self.background)
+            self.model.extend(background_models)
 
         if method == 'leastsq':
             print("**** Start spectrum fitting via Least-Square algorithm ****")
@@ -263,6 +262,11 @@ class EMCore:
         elif method == 'adapted_em':
             print("**** Start spectrum fitting via EM algorithm ****")
             info = self.adapted_em(x, intensity, max_iter, r_eps, stdout)
+            return info
+
+        elif method == 'deterministic_annealing':
+            info = self.deterministic_annealing(x, intensity, stdout=stdout,
+                                                max_iter=max_iter, r_eps=r_eps)
             return info
 
         elif method == 'smart':
@@ -286,15 +290,43 @@ class EMCore:
 
     def sampling(self, x, intensity, method='adapted_em', trial=10,
                  max_iter=1000, r_eps=1e-7, criteria='likelihood', stdout=False):
+        import copy
+        from EMPeaks.EMCore._backend import get_backend
+
         hist_model = []
         hist_run_info = []
-        for i in range(trial):
-            self.init_param_uniform()
-            print('* Starting Trial # {:3d}'.format(i))
-            run_info = self.fit(x, intensity, method=method, max_iter=max_iter, r_eps=r_eps, stdout=stdout)
-            tmp_param = copy.deepcopy(self.export_param())
-            hist_model.append(tmp_param)
-            hist_run_info.append(run_info)
+
+        if get_backend() == "rust" and method in ['adapted_em', 'smart', 'deterministic_annealing']:
+            import concurrent.futures
+            def _run_trial(i):
+                model_copy = copy.deepcopy(self)
+                model_copy.init_param_uniform()
+                if stdout:
+                    print('* Starting Trial # {:3d}'.format(i))
+                run_info = model_copy.fit(x, intensity, method=method, max_iter=max_iter, r_eps=r_eps, stdout=stdout)
+                tmp_param = model_copy.export_param()
+                return tmp_param, run_info
+
+            from EMPeaks.EMCore._backend import get_backend
+            if get_backend() == "rust":
+                with concurrent.futures.ThreadPoolExecutor(max_workers=min(trial, 8)) as executor:
+                    results = list(executor.map(_run_trial, range(trial)))
+            else:
+                # 純粋なPython実装の場合、GILの競合によりThreadPoolExecutorがハングアップするため直列実行する
+                results = [_run_trial(i) for i in range(trial)]
+
+            for res in results:
+                hist_model.append(res[0])
+                hist_run_info.append(res[1])
+        else:
+            for i in range(trial):
+                self.init_param_uniform()
+                if stdout:
+                    print('* Starting Trial # {:3d}'.format(i))
+                run_info = self.fit(x, intensity, method=method, max_iter=max_iter, r_eps=r_eps, stdout=stdout)
+                tmp_param = copy.deepcopy(self.export_param())
+                hist_model.append(tmp_param)
+                hist_run_info.append(run_info)
 
         hist_LL = np.array([hist_run_info[i]['LL'] for i in range(trial)])
         hist_RMSE = np.array([hist_run_info[i]['RMSE'] for i in range(trial)])
@@ -358,15 +390,23 @@ class EMCore:
             hist_model.append(tmp_param)
             hist_run_info.append(run_info)
 
-        hist_LL = np.array([hist_run_info[i]['LL'] for i in range(n_temp)])
+        hist_LL   = np.array([hist_run_info[i]['LL']          for i in range(n_temp)])
+        hist_RMSE = np.array([hist_run_info[i]['RMSE']        for i in range(n_temp)])
+        hist_time = np.array([hist_run_info[i]['total_time']  for i in range(n_temp)])
+        hist_iter = np.array([hist_run_info[i]['total_iter']  for i in range(n_temp)])
 
         print('Deterministic Annealing with {:3d} temperature stage is finished.'.format(n_temp))
         print()
-        info = {'LL_hist': hist_LL,
-                'RMSE_hist': np.array([hist_run_info[i]['RMSE'] for i in range(n_temp)]),
-                'time_hist': np.array([hist_run_info[i]['total_time'] for i in range(n_temp)]),
-                'iter_hist': np.array([hist_run_info[i]['total_iter'] for i in range(n_temp)])
-                }
+        info = {
+            'LL':         float(hist_LL[-1]),
+            'RMSE':       float(hist_RMSE[-1]),
+            'total_time': float(np.sum(hist_time)),
+            'total_iter': int(np.sum(hist_iter)),
+            'LL_hist':    hist_LL,
+            'RMSE_hist':  hist_RMSE,
+            'time_hist':  hist_time,
+            'iter_hist':  hist_iter,
+        }
         tmp = self.pi[0:self.K]
         K_non_zero = tmp[tmp>0].size
         print("number of non zero components of spectrum is {} in {}".format(K_non_zero, self.K))
@@ -384,6 +424,79 @@ class EMCore:
         return
 
     def adapted_em(self, x, intensity, max_iter, r_eps, stdout):
+        from EMPeaks.EMCore._backend import get_backend
+        if get_backend() == "rust" and self.background in {"none", "uniform", "squareroot", "linear"} and type(self).__name__ == "GaussianMixtureModel":
+            return self._adapted_em_rust(x, intensity, max_iter, r_eps, stdout)
+        return self._adapted_em_python(x, intensity, max_iter, r_eps, stdout)
+
+    def _adapted_em_rust(self, x, intensity, max_iter, r_eps, stdout):
+        import empeaks_rust_core
+
+        start = time.time()
+        print("<< Start fitting via Adapted EM Algorithm. [Rust backend / Gaussian Phase 3] >>")
+
+        mu    = np.array([self.model[k].mu    for k in range(self.K)], dtype=np.float64)
+        sigma = np.array([self.model[k].sigma for k in range(self.K)], dtype=np.float64)
+        pi    = self.pi.astype(np.float64).copy()
+        da    = self.Dirichlet_alpha.astype(np.float64).copy()
+        fix_mu    = [bool(getattr(self.model[k], 'fix_mu',    False)) for k in range(self.K)]
+        fix_sigma = [bool(getattr(self.model[k], 'fix_sigma', False)) for k in range(self.K)]
+
+        bg_type = {"none": 0, "uniform": 1, "squareroot": 2, "linear": 3}.get(self.background, 0)
+        s_tri_in = float(self.model[-1].s_tri) if self.background == "linear" else 0.0
+
+        total_iter, ll_hist, res_hist, s_tri_out = empeaks_rust_core.run_em_loop(
+            x.astype(np.float64), intensity.astype(np.float64),
+            mu, sigma, pi, da, fix_mu, fix_sigma, max_iter, r_eps,
+            self.x_min, self.x_max, bg_type, s_tri_in,
+        )
+
+        # 結果を Python 側モデルに反映
+        for k in range(self.K):
+            self.model[k].mu    = float(mu[k])
+            self.model[k].sigma = float(sigma[k])
+        self.pi[:self.K_all] = pi
+        if self.background == "linear":
+            self.model[-1].s_tri = s_tri_out
+            self.model[-1].s_uni = 1.0 - s_tri_out
+
+        t_tot = time.time() - start
+        ll = float(ll_hist[-1]) if len(ll_hist) > 0 else float('nan')
+        residual = float(res_hist[-1]) if len(res_hist) > 0 else float('nan')
+
+        converged = total_iter < max_iter
+        if converged:
+            print('Convergence is achieved at iter. {:3d}, elapsed time {:5.2f} s'
+                  .format(total_iter, t_tot))
+            print('   LogLikelihood:     {:12.8e}\n'
+                  '        residual:      {:12.8e}'.format(ll, residual))
+        else:
+            print('>>> Convergence is not achieved within {:3d} iterations, '
+                  'elapsed time: {:5.2f} s'.format(max_iter, t_tot))
+            print('   LogLikelihood:      {:12.8e}\n'
+                  '        residual:       {:12.8e}'.format(ll, residual))
+
+        rmse = self.leastsq_for_normalization_factor(x, intensity, stdout)
+        param = self.export_param()
+
+        run_info = {
+            'total_iter': total_iter,
+            'total_time': t_tot,
+            'time/iter': t_tot / max(total_iter, 1),
+            'LL': ll,
+            'LL_hist': list(ll_hist),
+            'LL_residual': residual,
+            'LL_residual_hist': list(res_hist),
+            'RMSE': rmse,
+        }
+        if stdout:
+            print('Estimated model parameters and scores are following:')
+            self.print_param_summary(param)
+            print('   LL:      {:12.8e}\n'
+                  '   RMSE:     {:12.8e}\n'.format(run_info['LL'], run_info['RMSE']))
+        return run_info
+
+    def _adapted_em_python(self, x, intensity, max_iter, r_eps, stdout):
         start = time.time()
         it_tot = 0
         t_tot = 0
@@ -439,8 +552,6 @@ class EMCore:
                   '        residual:       {:12.8e}'.format(ll, residual))
 
         rmse = self.leastsq_for_normalization_factor(x, intensity, stdout)
-        # self.N_tot = np.sum(intensity)
-        # rmse = np.sqrt(np.average((intensity - self.predict(x) * self.N_tot)**2))
         param = self.export_param()
 
         run_info = {
@@ -476,7 +587,7 @@ class EMCore:
         return
 
     def e_step(self, x):
-        eps = 1e-20
+        eps = self.EPSILON_PREDICT
         self._gamma = np.array([self.pi[k] * self.model[k].predict(x)
                                 / (self.predict(x) + eps) for k in range(self.K_all)])
         return
@@ -492,32 +603,28 @@ class EMCore:
         return
 
     def leastsq_for_normalization_factor(self, x, intensity, stdout):
-        print('<< Optimizing normalization factor by using least square method. >>')
-
-        def model(x, param):
-            return self.predict(x) * param
-
-        def residual(param, x, y):
-            return y - model(x, param)
-
-        init_param = np.abs(integrate.trapezoid(intensity, x))
-        print('init', init_param)
+        if stdout:
+            print('<< Optimizing normalization factor by exact linear least square. >>')
 
         start = time.time()
-        ls = optimize.least_squares(residual, init_param,
-                                    args=(x, intensity),
-                                    loss='linear'
-                                    )
-        self.N_tot = ls.x[0]
+        pred = self.predict(x)
+
+        denom = np.sum(pred ** 2)
+        if denom == 0:
+            self.N_tot = np.abs(integrate.trapezoid(intensity, x))
+        else:
+            self.N_tot = np.sum(intensity * pred) / denom
+
         self.N = list(self.pi * self.N_tot)
 
-        rmse = np.sqrt((ls['cost']) * 2.0 / x.size)
-        if ls["success"] == True:
-            print("   non-linear least-square optimization is successfully finished.")
+        # evaluate rmse
+        res = intensity - pred * self.N_tot
+        rmse = np.sqrt(np.sum(res ** 2) / x.size)
+
+        if stdout:
+            print("   exact linear least-square optimization is successfully finished.")
             print("            RMSE:      {:12.6e}\n"
                   "    Elapsed time:      {:12.6e} s\n".format(rmse, time.time() - start))
-        else:
-            print("   Warning: non-linear least-square optimization is failed.")
 
         return rmse
 
@@ -622,39 +729,6 @@ class EMCore:
             print("   Warning: non-linear least-square optimization is failed.")
 
         return run_info
-
-    def plot(self, x_data, intensity):
-        self.dx=x_data[1]-x_data[0]
-        figsize = (8, 3)
-        fig = plt.figure(figsize=figsize)
-        x = np.arange(self.x_min, self.x_max, self.dx)
-
-        ax = fig.add_subplot(1, 1, 1)
-        if self.background == 'none':
-            for k in range(self.K):
-                ax.plot(x, self.model[k].predict(x) * self.N[k], label='model_' + str(k))
-        elif self.background == 'sharley':
-            for k in range(self.K):
-                ax.plot(x, self.model[k].predict(x) * self.N[k], label='model_' + str(k))
-            y = self.model[-1].predict(x) * self.N[-1] + self.model[-2].predict(x) * self.N[-2]
-            ax.plot(x, y, label=self.background)
-        elif self.background == 'ramp_sum':
-            for k in range(self.K):
-                ax.plot(x, self.model[k].predict(x) * self.N[k], label='model_' + str(k))
-            y = np.sum([self.model[self.K+k].predict(x) * self.N[self.K+k] for k in range(self.k_ramp+2)], axis=0)
-            ax.plot(x, y, label=self.background)
-        else:
-            for k in range(self.K):
-                ax.plot(x, self.model[k].predict(x) * self.N[k], label='model_' + str(k))
-            ax.plot(x, self.model[-1].predict(x) * self.N[-1], label=self.background)
-
-        ax.plot(x, self.predict(x) * self.N_tot, 'black', linewidth=3, ls='--', label='full_model')
-        ax.scatter(x_data, intensity, label='data')
-        ax.set_xlabel('Energy [eV]')
-        ax.set_ylabel('Intensity')
-        ax.legend()
-        plt.show()
-        return
 
 
 # class Sharley():

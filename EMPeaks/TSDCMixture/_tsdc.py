@@ -7,7 +7,18 @@ import matplotlib.pyplot as plt
 from scipy.stats import multivariate_normal
 import time
 
+from EMPeaks.EMCore._backend import get_backend
+
+try:
+    from empeaks_rust_core import tsdc_predict as _rust_tsdc_predict
+    from empeaks_rust_core import tsdc_mle_find_root as _rust_tsdc_mle_find_root
+    from empeaks_rust_core import tsdc_mle_lbfgsb as _rust_tsdc_mle_lbfgsb
+    _RUST_AVAILABLE = True
+except ImportError:
+    _RUST_AVAILABLE = False
+
 kB=8.61733034e-5
+
 inv_kB = 1.0/kB
 
 
@@ -91,6 +102,9 @@ class TSDC:
         return Tp
 
     def predict(self, T):
+        if get_backend() == "rust" and _RUST_AVAILABLE:
+            return _rust_tsdc_predict(T, self.Ea, self.tau0, self.beta)
+
         prob = 1.0 / (self.beta * self.tau0) * \
                        np.exp(- self.Ea / kB / T
                               - 1 / self.beta / self.tau0
@@ -299,6 +313,17 @@ class TSDC:
         return opt_param, rmse
 
     def gradient_minimization(self, T, intensity):
+        if get_backend() == "rust" and _RUST_AVAILABLE:
+            try:
+                self.Ea, self.tau0, self.Tp = _rust_tsdc_mle_lbfgsb(
+                    T, intensity, self.Ea, self.tau0, self.Tp,
+                    self.Ea_min, self.Ea_max, self.T_min, self.T_max, self.beta
+                )
+                self.P0 = np.trapezoid(intensity, T) / self.beta
+                return
+            except RuntimeError as e:
+                pass
+
         d1 = np.sum(intensity)
         d2 = np.sum(intensity/T * inv_kB)
 
@@ -330,17 +355,31 @@ class TSDC:
         init = np.zeros(2)
         init[0] = self.Ea
         init[1] = self.Tp
-        info = optimize.minimize(log_likelihood, x0=init, jac=derivative,
-                                 bounds=[(self.Ea_min, self.Ea_max), (self.T_min, self.T_max)],
-                                 method='L-BFGS-B')
-        #print(info)
-        self.Ea = info['x'][0]
-        self.Tp = info['x'][1]
+        try:
+            info = optimize.minimize(log_likelihood, x0=init, jac=derivative,
+                                     bounds=[(self.Ea_min, self.Ea_max), (self.T_min, self.T_max)],
+                                     method='L-BFGS-B')
+            self.Ea = info['x'][0]
+            self.Tp = info['x'][1]
+        except (ValueError, RuntimeError):
+            pass
         self.tau0 = self.get_tau0()
+        self.P0 = np.trapezoid(intensity, T) / self.beta
         self.P0 = integrate.trapezoid(intensity, T) / self.beta
         return
 
     def find_root(self, T, intensity):
+        if get_backend() == "rust" and _RUST_AVAILABLE:
+            try:
+                self.Ea, self.tau0, self.Tp = _rust_tsdc_mle_find_root(
+                    T, intensity, self.Ea, self.tau0, self.Tp,
+                    self.Ea_min, self.Ea_max, self.beta
+                )
+                self.P0 = np.trapezoid(intensity, T) / self.beta
+                return
+            except RuntimeError as e:
+                pass
+
         def f_sum(E, T, Y):
             return np.sum(Y * np.array(T * expn(2, E * inv_kB / T)))
 
@@ -351,7 +390,10 @@ class TSDC:
             g_sum = np.sum(Y * inv_kB * np.array(- expi(-E * inv_kB / T)))
             return np.log10(f_sum(E, T, Y)) - np.log10(beta * b) - np.log10(g_sum) + np.log10(beta * a)
 
-        self.Ea = optimize.brentq(f_g_diff, self.Ea_min, self.Ea_max, args=(T, intensity, self.beta))
+        try:
+            self.Ea = optimize.brentq(f_g_diff, self.Ea_min, self.Ea_max, args=(T, intensity, self.beta))
+        except ValueError:
+            pass
         self.tau0 = f_sum(self.Ea, T, intensity) / (self.beta * np.sum(intensity))
         self.Tp = self.get_Tp()
         self.P0 = integrate.trapezoid(intensity, T) / self.beta
@@ -369,12 +411,14 @@ class TSDC:
         init = np.zeros(2)
         init[0] = self.Ea
         init[1] = 860 #self.Tp
-        info = optimize.minimize(log_likelihood, x0=init,
-                                 bounds=[(self.Ea_min, self.Ea_max), (self.T_min, self.T_max)],
-                                 method='L-BFGS-B')
-        #print(info)
-        self.Ea = info['x'][0]
-        self.Tp = info['x'][1]
+        try:
+            info = optimize.minimize(log_likelihood, x0=init,
+                                     bounds=[(self.Ea_min, self.Ea_max), (self.T_min, self.T_max)],
+                                     method='L-BFGS-B')
+            self.Ea = info['x'][0]
+            self.Tp = info['x'][1]
+        except (ValueError, RuntimeError):
+            pass
         self.tau0 = self.get_tau0()
         self.P0 = integrate.trapezoid(intensity, T) / self.beta
         return

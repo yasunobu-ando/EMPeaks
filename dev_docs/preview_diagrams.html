@@ -1,0 +1,261 @@
+<!DOCTYPE html>
+<html lang="ja">
+
+<head>
+    <meta charset="UTF-8">
+    <title>EMPeaks Documentation Diagrams Preview</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: "Helvetica Neue", Arial, sans-serif;
+            background-color: #f5f5f5;
+            display: flex;
+            min-height: 100vh;
+        }
+
+        /* Sidebar Styles */
+        .sidebar {
+            width: 260px;
+            background-color: #2c3e50;
+            color: #ecf0f1;
+            padding: 20px;
+            position: fixed;
+            height: 100vh;
+            overflow-y: auto;
+            box-sizing: border-box;
+            box-shadow: 2px 0 5px rgba(0, 0, 0, 0.1);
+        }
+
+        .sidebar h2 {
+            font-size: 1.2em;
+            margin-top: 0;
+            border-bottom: 1px solid #34495e;
+            padding-bottom: 10px;
+            margin-bottom: 20px;
+        }
+
+        .sidebar ul {
+            list-style: none;
+            padding: 0;
+        }
+
+        .sidebar li {
+            margin-bottom: 10px;
+        }
+
+        .sidebar a {
+            color: #bdc3c7;
+            text-decoration: none;
+            display: block;
+            padding: 8px 10px;
+            border-radius: 4px;
+            transition: background 0.2s, color 0.2s;
+        }
+
+        .sidebar a:hover {
+            background-color: #34495e;
+            color: #fff;
+        }
+
+        .sidebar a.active {
+            background-color: #3498db;
+            color: #fff;
+            font-weight: bold;
+        }
+
+        .sidebar .note {
+            font-size: 0.8em;
+            color: #95a5a6;
+            margin-top: 20px;
+            padding-top: 10px;
+            border-top: 1px solid #34495e;
+        }
+
+        /* Main Content Styles */
+        .main-content {
+            margin-left: 260px;
+            padding: 40px;
+            flex: 1;
+            max-width: 1000px;
+        }
+
+        .diagram-container {
+            background: white;
+            padding: 25px;
+            margin-bottom: 30px;
+            border-radius: 8px;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+        }
+
+        h1 {
+            color: #2c3e50;
+            margin-bottom: 30px;
+        }
+
+        h3 {
+            color: #7f8c8d;
+            margin-top: 0;
+            font-size: 1.1em;
+            display: flex;
+            align-items: center;
+        }
+
+        .filename {
+            font-family: monospace;
+            background: #e8f4f8;
+            color: #2980b9;
+            padding: 2px 6px;
+            border-radius: 4px;
+            margin-right: 10px;
+            font-size: 0.9em;
+        }
+    </style>
+</head>
+
+<body>
+
+    <div class="sidebar">
+        <h2>EMPeaks Docs</h2>
+        <ul>
+            <li><a href="README.md">📄 README.md</a></li>
+            <li><a href="project_overview.md">📄 project_overview.md</a></li>
+            <li><a href="api_reference.md">📄 api_reference.md</a></li>
+            <li><a href="dependencies.md">📄 dependencies.md</a></li>
+            <li><a href="documentation_map.md">📄 documentation_map.md</a></li>
+            <li><a href="preview_diagrams.html" class="active">📊 Diagram Preview</a></li>
+        </ul>
+        <div class="note">
+            <p>※ リンクをクリックするとブラウザでMarkdownファイルが開きます（プレビュー機能ではありません）。</p>
+        </div>
+    </div>
+
+    <div class="main-content">
+        <h1>Mermaid Diagrams Preview</h1>
+        <p>ドキュメント内に埋め込まれたMermaid図のレンダリング結果です。</p>
+
+        <script type="module">
+            import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.esm.min.mjs';
+            mermaid.initialize({ startOnLoad: true, theme: 'default' });
+        </script>
+
+        <!-- project_overview.md -->
+        <div class="diagram-container">
+            <h3><span class="filename">project_overview.md</span> ディレクトリ構造</h3>
+            <pre class="mermaid">
+graph TD
+    Root[EMPeaks Project] --> Src[EMPeaks/]
+    Root --> Docs[docs/]
+    Root --> DevDocs[dev_docs/]
+    Root --> Demo[empeaks_demo.py]
+    
+    Src --> GMM[GaussianMixture/]
+    Src --> LMM[LorentzianMixture/]
+    Src --> Core[EMCore/]
+    
+    DevDocs --> Readme[README.md]
+    DevDocs --> Overview[project_overview.md]
+    DevDocs --> API[api_reference.md]
+    
+    style Root fill:#f9f,stroke:#333
+    style Src fill:#bbf,stroke:#333
+            </pre>
+        </div>
+
+        <div class="diagram-container">
+            <h3><span class="filename">project_overview.md</span> 解析フロー</h3>
+            <pre class="mermaid">
+sequenceDiagram
+    participant User as ユーザー
+    participant Script as Pythonスクリプト
+    participant Model as EMPeaksモデル
+    
+    User->>Script: データ(x, y)をロード
+    Script->>Model: モデル初期化 (K=3など)
+    Script->>Model: fit(x, y) を実行
+    loop EMアルゴリズム
+        Model->>Model: E-step (確率計算)
+        Model->>Model: M-step (パラメータ更新)
+        Model->>Model: 収束判定
+    end
+    Model-->>Script: フィッティング完了
+    Script->>Model: plot(x, y)
+    Model-->>User: グラフ表示
+            </pre>
+        </div>
+
+        <!-- api_reference.md -->
+        <div class="diagram-container">
+            <h3><span class="filename">api_reference.md</span> クラス継承関係</h3>
+            <pre class="mermaid">
+classDiagram
+    class EMCore {
+        +fit(x, y)
+        +predict(x)
+        +plot(x, y)
+        +sampling(x, y)
+    }
+    class GaussianMixtureModel {
+        +__init__(K, ...)
+    }
+    class LorentzianMixtureModel {
+        +__init__(K, ...)
+    }
+    
+    EMCore <|-- GaussianMixtureModel
+    EMCore <|-- LorentzianMixtureModel
+            </pre>
+        </div>
+
+        <div class="diagram-container">
+            <h3><span class="filename">api_reference.md</span> fitメソッド フローチャート</h3>
+            <pre class="mermaid">
+flowchart TD
+    Start[開始] --> Init[初期値設定<br/>(sampling等)]
+    Init --> LoopStart{収束ループ}
+    LoopStart --> EStep[E-step: 所属確率の計算]
+    EStep --> MStep[M-step: パラメータ更新]
+    MStep --> CalcLL[尤度(Log-Likelihood)計算]
+    CalcLL --> Check{収束判定<br/>(変化 < r_eps?)}
+    Check -- No --> LoopStart
+    Check -- Yes --> End[終了]
+            </pre>
+        </div>
+
+        <!-- dependencies.md -->
+        <div class="diagram-container">
+            <h3><span class="filename">dependencies.md</span> 依存関係グラフ</h3>
+            <pre class="mermaid">
+graph LR
+    App[EMPeaks] --> NP[NumPy >= 1.21.6]
+    App --> SP[SciPy >= 1.7.3]
+    App --> MP[Matplotlib >= 3.5.3]
+    App --> PD[Pandas >= 1.2.3]
+    
+    style NP fill:#ffcccc,stroke:#f00,stroke-width:2px
+    style SP fill:#ffcccc,stroke:#f00,stroke-width:2px
+            </pre>
+        </div>
+
+        <div class="diagram-container">
+            <h3><span class="filename">dependencies.md</span> バージョンリスクのメカニズム</h3>
+            <pre class="mermaid">
+sequenceDiagram
+    participant Dev as 開発環境
+    participant Repo as PyPI (リポジトリ)
+    participant Prod as 運用環境
+    
+    Note over Dev: NumPy 1.24で動作確認
+    Dev->>Prod: requirements.txt (numpy>=1.21) を共有
+    Note over Repo: NumPy 2.0 (破壊的変更あり) がリリース
+    Prod->>Repo: pip install -r requirements.txt
+    Repo-->>Prod: NumPy 2.0 をインストール (最新のため)
+    Prod->>Prod: 実行 -> エラー発生！
+    Note over Prod: 「何もしていないのに壊れた」
+            </pre>
+        </div>
+    </div>
+
+</body>
+
+</html>
