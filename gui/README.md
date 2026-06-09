@@ -12,6 +12,21 @@ pip install -r requirements-gui.txt
 streamlit run gui/app.py
 ```
 
+### CLIコマンドで起動する（推奨）
+
+EMPeaks をインストール済みの場合は、以下のコマンドでも起動できます。
+
+```bash
+pip install -e .   # 初回のみ
+empeaks deck
+```
+
+ポートを変更する場合:
+
+```bash
+empeaks deck --port 8502
+```
+
 ブラウザで `http://localhost:8501` にアクセスしてください。
 
 ## 機能

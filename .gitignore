@@ -1,24 +1,42 @@
-# OS generated files
+# macOS
 .DS_Store
 
-# Python
-__pycache__/
-*.pyc
-*.pyo
-*.pyd
-.pytest_cache/
-
-# Environments
+# Python 仮想環境
 .venv/
+.venv*/
 venv/
 ENV/
-env/
 
-# IDEs
-.idea/
+# Python キャッシュ・ビルド成果物
+**/__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+dist/
+build/
+*.whl
+*.egg
+
+# pytest / coverage
+.pytest_cache/
+.coverage
+htmlcov/
+
+# pyenv / uv
+.python-version
+
+# Rust ビルド成果物（cargo build で生成される大量のバイナリ）
+EMPeaks/_rust_core/target/
+
+# エディタ設定
 .vscode/
+.idea/
 
-# CSV outputs (Exclude test data)
-*.csv
-!OHA_1.csv
-!OHA_2.csv
+# スクラッチ用の一時ファイル・ログ
+benchmark_output.txt
+benchmark_results.csv
+fix_stop_cond.py
+release_gil.py
+update_em_engine.py
+test_*.py
+!tests/test_*.py

@@ -42,6 +42,90 @@ class TSDCMixtureModel(EMCore):
         [self.model[k].set_param(**single_params[k]) for k in range(self.K)]
         return
 
+    def adapted_em(self, x, intensity, max_iter, r_eps, stdout):
+        from EMPeaks.EMCore._backend import get_backend
+        if get_backend() == "rust" and self.background in {"none", "uniform", "squareroot", "linear"}:
+            return self._adapted_em_rust_tsdc(x, intensity, max_iter, r_eps, stdout)
+        return self._adapted_em_python(x, intensity, max_iter, r_eps, stdout)
+
+    def _adapted_em_rust_tsdc(self, x, intensity, max_iter, r_eps, stdout):
+        import empeaks_rust_core
+        import time
+
+        start = time.time()
+        print("<< Start fitting via Adapted EM Algorithm. [Rust backend / TSDC Phase 3] >>")
+
+        t_f64 = np.ascontiguousarray(x, dtype=np.float64)
+        int_f64 = np.ascontiguousarray(intensity, dtype=np.float64)
+
+        ea_arr = np.array([float(np.squeeze(self.model[k].Ea)) for k in range(self.K)], dtype=np.float64)
+        tau0_arr = np.array([float(np.squeeze(self.model[k].tau0)) for k in range(self.K)], dtype=np.float64)
+        tp_arr = np.array([float(np.squeeze(self.model[k].Tp)) for k in range(self.K)], dtype=np.float64)
+        pi_arr = np.array(self.pi[:self.K_all], dtype=np.float64)
+        da_arr = np.ascontiguousarray(self.Dirichlet_alpha[:self.K_all], dtype=np.float64)
+        fix_ea = [bool(getattr(self.model[k], 'fix_Ea', False)) for k in range(self.K)]
+        fix_tp = [bool(getattr(self.model[k], 'fix_Tp', False)) for k in range(self.K)]
+
+        bg_type = {"none": 0, "uniform": 1, "squareroot": 2, "linear": 3}.get(self.background, 0)
+        s_tri_in = float(self.model[-1].s_tri) if self.background == "linear" else 0.0
+
+        total_iter, ll_hist_np, res_hist_np, s_tri_out = empeaks_rust_core.run_tsdc_em_loop(
+            t_f64, int_f64,
+            ea_arr, tau0_arr, tp_arr, pi_arr,
+            da_arr,
+            fix_ea, fix_tp,
+            self.beta,
+            self.Ea_min, self.Ea_max,
+            self.T_min, self.T_max,
+            max_iter, r_eps, bg_type, s_tri_in,
+        )
+
+        for k in range(self.K):
+            self.model[k].Ea = float(ea_arr[k])
+            self.model[k].tau0 = float(tau0_arr[k])
+            self.model[k].Tp = float(tp_arr[k])
+        self.pi[:self.K_all] = pi_arr
+        if self.background == "linear":
+            self.model[-1].s_tri = s_tri_out
+            self.model[-1].s_uni = 1.0 - s_tri_out
+
+        ll_hist = list(ll_hist_np)
+        res_hist = list(res_hist_np)
+        ll = ll_hist[-1]
+        residual = res_hist[-1] if len(res_hist) > 1 else 0.0
+        t_tot = time.time() - start
+
+        if total_iter < max_iter:
+            print('Convergence is achieved at iter. {:3d}, elapsed time {:5.2f} s'
+                  .format(total_iter, t_tot))
+            print('   LogLikelihood:     {:12.8e}\n        residual:      {:12.8e}'
+                  .format(ll, residual))
+        else:
+            print('>>> Convergence is not achieved within {:3d} iterations, elapsed time: {:5.2f} s'
+                  .format(max_iter, t_tot))
+            print('   LogLikelihood:      {:12.8e}\n        residual:       {:12.8e}'
+                  .format(ll, residual))
+
+        rmse = self.leastsq_for_normalization_factor(x, intensity, stdout)
+        param = self.export_param()
+
+        run_info = {
+            'total_iter': total_iter,
+            'total_time': t_tot,
+            'time/iter': t_tot / max(total_iter, 1),
+            'LL': ll,
+            'LL_hist': ll_hist,
+            'LL_residual': residual,
+            'LL_residual_hist': res_hist,
+            'RMSE': rmse,
+        }
+        if stdout:
+            print('Estimated model parameters and scores are following:')
+            self.print_param_summary(param)
+            print('   LL:      {:12.8e}\n'
+                  '   RMSE:     {:12.8e}\n'.format(run_info['LL'], run_info['RMSE']))
+        return run_info
+
     def set_param(self, **param):
         """
         """
@@ -107,13 +191,15 @@ class TSDCMixtureModel(EMCore):
         return _tmp_param
 
     def export_single_params(self, _tmp_param):
-        """ parameters are sorted in the order of the first element in param_set."""
+        """ parameters are sorted in ascending order of Ea."""
         param_set = {"Ea", "tau0", "Tp", "is_not_converged"}
         _tmp = {}
         for param in list(param_set):
             _tmp[param] = [self.model[k].__dict__[param] for k in range(self.K)]
 
-        _tmp_index = np.array(_tmp[list(param_set)[0]]).argsort()
+        # Always sort by scalar "Ea" to avoid non-deterministic set ordering
+        # and 2-D argsort when is_not_converged (a 3-element array) comes first.
+        _tmp_index = np.array(_tmp["Ea"]).argsort()
 
         for param in list(param_set):
             _tmp_param[param] = list(np.array(_tmp[param])[_tmp_index])
@@ -482,11 +568,6 @@ class TSDCMixtureModel(EMCore):
         for k in range(self.K):
             bnds.append([0.0, np.infty])
 
-        ls = optimize.minimize(loss, init_param,
-                               args=(T_bin, freq),
-                               bounds=bnds,
-                               method='L-BFGS-B'
-                               )
         try:
             ls = optimize.minimize(loss, init_param,
                                         args=(T_bin, freq),
@@ -547,6 +628,9 @@ class TSDCMixtureModel(EMCore):
 
     def sampling(self, x, intensity, method='adapted_em', trial=10,
                  max_iter=1000, r_eps=1e-7, criteria='likelihood', stdout=False):
+        import copy
+        from EMPeaks.EMCore._backend import get_backend
+        
         hist_model = []
         hist_run_info = []
 
@@ -556,40 +640,93 @@ class TSDCMixtureModel(EMCore):
         Ea_not_conv = np.array([])
         Tp_not_conv = np.array([])
 
-        for i in range(trial):
-            # first initialization
-            self.init_param_empirical(x, intensity)
-            init_param = self.export_param()
-            print(init_param['Ea'])
-            for k in range(self.K):
-                self.model[k].is_not_converged[0] = init_param['Ea'][k]
-                self.model[k].is_not_converged[1] = init_param['Tp'][k]
- 
-            print('* Starting Trial # {:3d}'.format(i))
-            print("parameters are initialized as follows.")
-            print("\t Ea: ", init_param['Ea'])
-            print("\t Tp: ", list(init_param['Tp']))
+        if get_backend() == "rust" and method in ['adapted_em', 'smart']:
+            import concurrent.futures
+            
+            def _run_tsdc_trial(i):
+                model_copy = copy.deepcopy(self)
+                model_copy.init_param_empirical(x, intensity)
+                init_param = model_copy.export_param()
+                if stdout:
+                    print(init_param['Ea'])
+                
+                for k in range(model_copy.K):
+                    model_copy.model[k].is_not_converged[0] = float(np.squeeze(init_param['Ea'][k]))
+                    model_copy.model[k].is_not_converged[1] = float(np.squeeze(init_param['Tp'][k]))
+                
+                if stdout:
+                    print('* Starting Trial # {:3d}'.format(i))
+                    print("parameters are initialized as follows.")
+                    print("\t Ea: ", init_param['Ea'])
+                    print("\t Tp: ", list(init_param['Tp']))
+                    print("")
 
-            print("")
+                run_info = model_copy.fit(x, intensity, method=method, max_iter=max_iter, r_eps=r_eps, stdout=stdout)                
+                tmp_param = model_copy.export_param()
+                if stdout:
+                    print("<<<<<<fitting of trial {:d} is finished.<<<<<<<<<".format(i))
+                    print("")
+                return tmp_param, run_info
 
-            run_info = self.fit(x, intensity, method=method, max_iter=max_iter, r_eps=r_eps, stdout=stdout)                
+            from EMPeaks.EMCore._backend import get_backend
+            if get_backend() == "rust":
+                with concurrent.futures.ThreadPoolExecutor(max_workers=min(trial, 8)) as executor:
+                    results = list(executor.map(_run_tsdc_trial, range(trial)))
+            else:
+                # 純粋なPython実装の場合、GILの競合によりThreadPoolExecutorがハングアップするため直列実行する
+                results = [_run_tsdc_trial(i) for i in range(trial)]
+            
+            for res in results:
+                tmp_param = res[0]
+                run_info = res[1]
+                hist_model.append(tmp_param)
+                hist_run_info.append(run_info)
 
-            tmp_param = copy.deepcopy(self.export_param())
-            hist_model.append(tmp_param)
-            hist_run_info.append(run_info)
+                #>>> for reviewers comments
+                flag = np.array([False for i in range(self.K)])
+                flag = np.array(tmp_param["is_not_converged"]).T[2].astype(bool)
+                Ea_not_conv = np.append(Ea_not_conv, np.array(tmp_param["is_not_converged"]).T[0][flag])
+                Tp_not_conv = np.append(Tp_not_conv, np.array(tmp_param["is_not_converged"]).T[1][flag])
 
-            print("<<<<<<fitting of trial {:d} is finished.<<<<<<<<<".format(i))
-            print("")
-
-            #>>> for reviewers comments
-            flag = np.array([False for i in range(self.K)])
-            flag = np.array(tmp_param["is_not_converged"]).T[2].astype(bool)
-            Ea_not_conv = np.append(Ea_not_conv, np.array(tmp_param["is_not_converged"]).T[0][flag])
-            Tp_not_conv = np.append(Tp_not_conv, np.array(tmp_param["is_not_converged"]).T[1][flag])
-
-            flag= ~flag
-            Ea_conv = np.append(Ea_conv, np.array(tmp_param["is_not_converged"]).T[0][flag])
-            Tp_conv = np.append(Tp_conv, np.array(tmp_param["is_not_converged"]).T[1][flag])
+                flag= ~flag
+                Ea_conv = np.append(Ea_conv, np.array(tmp_param["is_not_converged"]).T[0][flag])
+                Tp_conv = np.append(Tp_conv, np.array(tmp_param["is_not_converged"]).T[1][flag])
+                
+        else:
+            for i in range(trial):
+                # first initialization
+                self.init_param_empirical(x, intensity)
+                init_param = self.export_param()
+                print(init_param['Ea'])
+                for k in range(self.K):
+                    self.model[k].is_not_converged[0] = float(np.squeeze(init_param['Ea'][k]))
+                    self.model[k].is_not_converged[1] = float(np.squeeze(init_param['Tp'][k]))
+     
+                print('* Starting Trial # {:3d}'.format(i))
+                print("parameters are initialized as follows.")
+                print("\t Ea: ", init_param['Ea'])
+                print("\t Tp: ", list(init_param['Tp']))
+    
+                print("")
+    
+                run_info = self.fit(x, intensity, method=method, max_iter=max_iter, r_eps=r_eps, stdout=stdout)                
+    
+                tmp_param = copy.deepcopy(self.export_param())
+                hist_model.append(tmp_param)
+                hist_run_info.append(run_info)
+    
+                print("<<<<<<fitting of trial {:d} is finished.<<<<<<<<<".format(i))
+                print("")
+    
+                #>>> for reviewers comments
+                flag = np.array([False for i in range(self.K)])
+                flag = np.array(tmp_param["is_not_converged"]).T[2].astype(bool)
+                Ea_not_conv = np.append(Ea_not_conv, np.array(tmp_param["is_not_converged"]).T[0][flag])
+                Tp_not_conv = np.append(Tp_not_conv, np.array(tmp_param["is_not_converged"]).T[1][flag])
+    
+                flag= ~flag
+                Ea_conv = np.append(Ea_conv, np.array(tmp_param["is_not_converged"]).T[0][flag])
+                Tp_conv = np.append(Tp_conv, np.array(tmp_param["is_not_converged"]).T[1][flag])
 
         np.savetxt("conv.csv", np.array([Ea_conv, Tp_conv]).T, delimiter=",")
         np.savetxt("not_conv.csv", np.array([Ea_not_conv, Tp_not_conv]).T, delimiter=",")

@@ -40,7 +40,7 @@ class EMCore:
         self.background = background
         self.dx = 1.0
         self.k_ramp = k_ramp  # Store k_ramp for ramp_sum
-        
+
         # Initialize BackgroundFactory for delegation
         self._bg_factory = BackgroundFactory(x_min, x_max, k_ramp)
 
@@ -198,7 +198,7 @@ class EMCore:
 
     def _update_mixture_weights(self, n_background_models, use_random=False):
         """背景モデル追加時に混合重みを更新
-        
+
         Args:
             n_background_models: 追加する背景モデルの数
             use_random: Trueならランダム初期化、Falseなら定数初期化
@@ -230,7 +230,7 @@ class EMCore:
 
         self.x_min = np.min(x)
         self.x_max = np.max(x)
-        
+
         # Recreate background model with updated x_min/x_max
         if self.background in ('uniform', 'squareroot', 'linear'):
             self._bg_factory.update_range(self.x_min, self.x_max)
@@ -264,6 +264,11 @@ class EMCore:
             info = self.adapted_em(x, intensity, max_iter, r_eps, stdout)
             return info
 
+        elif method == 'deterministic_annealing':
+            info = self.deterministic_annealing(x, intensity, stdout=stdout,
+                                                max_iter=max_iter, r_eps=r_eps)
+            return info
+
         elif method == 'smart':
             print('Start smart fitting process.')
             print('>>> Step 1: Sampling {:3d} trials with low threshold of 1.0e-6.'.format(trial))
@@ -285,15 +290,43 @@ class EMCore:
 
     def sampling(self, x, intensity, method='adapted_em', trial=10,
                  max_iter=1000, r_eps=1e-7, criteria='likelihood', stdout=False):
+        import copy
+        from EMPeaks.EMCore._backend import get_backend
+
         hist_model = []
         hist_run_info = []
-        for i in range(trial):
-            self.init_param_uniform()
-            print('* Starting Trial # {:3d}'.format(i))
-            run_info = self.fit(x, intensity, method=method, max_iter=max_iter, r_eps=r_eps, stdout=stdout)
-            tmp_param = copy.deepcopy(self.export_param())
-            hist_model.append(tmp_param)
-            hist_run_info.append(run_info)
+
+        if get_backend() == "rust" and method in ['adapted_em', 'smart', 'deterministic_annealing']:
+            import concurrent.futures
+            def _run_trial(i):
+                model_copy = copy.deepcopy(self)
+                model_copy.init_param_uniform()
+                if stdout:
+                    print('* Starting Trial # {:3d}'.format(i))
+                run_info = model_copy.fit(x, intensity, method=method, max_iter=max_iter, r_eps=r_eps, stdout=stdout)
+                tmp_param = model_copy.export_param()
+                return tmp_param, run_info
+
+            from EMPeaks.EMCore._backend import get_backend
+            if get_backend() == "rust":
+                with concurrent.futures.ThreadPoolExecutor(max_workers=min(trial, 8)) as executor:
+                    results = list(executor.map(_run_trial, range(trial)))
+            else:
+                # 純粋なPython実装の場合、GILの競合によりThreadPoolExecutorがハングアップするため直列実行する
+                results = [_run_trial(i) for i in range(trial)]
+
+            for res in results:
+                hist_model.append(res[0])
+                hist_run_info.append(res[1])
+        else:
+            for i in range(trial):
+                self.init_param_uniform()
+                if stdout:
+                    print('* Starting Trial # {:3d}'.format(i))
+                run_info = self.fit(x, intensity, method=method, max_iter=max_iter, r_eps=r_eps, stdout=stdout)
+                tmp_param = copy.deepcopy(self.export_param())
+                hist_model.append(tmp_param)
+                hist_run_info.append(run_info)
 
         hist_LL = np.array([hist_run_info[i]['LL'] for i in range(trial)])
         hist_RMSE = np.array([hist_run_info[i]['RMSE'] for i in range(trial)])
@@ -357,15 +390,23 @@ class EMCore:
             hist_model.append(tmp_param)
             hist_run_info.append(run_info)
 
-        hist_LL = np.array([hist_run_info[i]['LL'] for i in range(n_temp)])
+        hist_LL   = np.array([hist_run_info[i]['LL']          for i in range(n_temp)])
+        hist_RMSE = np.array([hist_run_info[i]['RMSE']        for i in range(n_temp)])
+        hist_time = np.array([hist_run_info[i]['total_time']  for i in range(n_temp)])
+        hist_iter = np.array([hist_run_info[i]['total_iter']  for i in range(n_temp)])
 
         print('Deterministic Annealing with {:3d} temperature stage is finished.'.format(n_temp))
         print()
-        info = {'LL_hist': hist_LL,
-                'RMSE_hist': np.array([hist_run_info[i]['RMSE'] for i in range(n_temp)]),
-                'time_hist': np.array([hist_run_info[i]['total_time'] for i in range(n_temp)]),
-                'iter_hist': np.array([hist_run_info[i]['total_iter'] for i in range(n_temp)])
-                }
+        info = {
+            'LL':         float(hist_LL[-1]),
+            'RMSE':       float(hist_RMSE[-1]),
+            'total_time': float(np.sum(hist_time)),
+            'total_iter': int(np.sum(hist_iter)),
+            'LL_hist':    hist_LL,
+            'RMSE_hist':  hist_RMSE,
+            'time_hist':  hist_time,
+            'iter_hist':  hist_iter,
+        }
         tmp = self.pi[0:self.K]
         K_non_zero = tmp[tmp>0].size
         print("number of non zero components of spectrum is {} in {}".format(K_non_zero, self.K))
@@ -383,6 +424,79 @@ class EMCore:
         return
 
     def adapted_em(self, x, intensity, max_iter, r_eps, stdout):
+        from EMPeaks.EMCore._backend import get_backend
+        if get_backend() == "rust" and self.background in {"none", "uniform", "squareroot", "linear"} and type(self).__name__ == "GaussianMixtureModel":
+            return self._adapted_em_rust(x, intensity, max_iter, r_eps, stdout)
+        return self._adapted_em_python(x, intensity, max_iter, r_eps, stdout)
+
+    def _adapted_em_rust(self, x, intensity, max_iter, r_eps, stdout):
+        import empeaks_rust_core
+
+        start = time.time()
+        print("<< Start fitting via Adapted EM Algorithm. [Rust backend / Gaussian Phase 3] >>")
+
+        mu    = np.array([self.model[k].mu    for k in range(self.K)], dtype=np.float64)
+        sigma = np.array([self.model[k].sigma for k in range(self.K)], dtype=np.float64)
+        pi    = self.pi.astype(np.float64).copy()
+        da    = self.Dirichlet_alpha.astype(np.float64).copy()
+        fix_mu    = [bool(getattr(self.model[k], 'fix_mu',    False)) for k in range(self.K)]
+        fix_sigma = [bool(getattr(self.model[k], 'fix_sigma', False)) for k in range(self.K)]
+
+        bg_type = {"none": 0, "uniform": 1, "squareroot": 2, "linear": 3}.get(self.background, 0)
+        s_tri_in = float(self.model[-1].s_tri) if self.background == "linear" else 0.0
+
+        total_iter, ll_hist, res_hist, s_tri_out = empeaks_rust_core.run_em_loop(
+            x.astype(np.float64), intensity.astype(np.float64),
+            mu, sigma, pi, da, fix_mu, fix_sigma, max_iter, r_eps,
+            self.x_min, self.x_max, bg_type, s_tri_in,
+        )
+
+        # 結果を Python 側モデルに反映
+        for k in range(self.K):
+            self.model[k].mu    = float(mu[k])
+            self.model[k].sigma = float(sigma[k])
+        self.pi[:self.K_all] = pi
+        if self.background == "linear":
+            self.model[-1].s_tri = s_tri_out
+            self.model[-1].s_uni = 1.0 - s_tri_out
+
+        t_tot = time.time() - start
+        ll = float(ll_hist[-1]) if len(ll_hist) > 0 else float('nan')
+        residual = float(res_hist[-1]) if len(res_hist) > 0 else float('nan')
+
+        converged = total_iter < max_iter
+        if converged:
+            print('Convergence is achieved at iter. {:3d}, elapsed time {:5.2f} s'
+                  .format(total_iter, t_tot))
+            print('   LogLikelihood:     {:12.8e}\n'
+                  '        residual:      {:12.8e}'.format(ll, residual))
+        else:
+            print('>>> Convergence is not achieved within {:3d} iterations, '
+                  'elapsed time: {:5.2f} s'.format(max_iter, t_tot))
+            print('   LogLikelihood:      {:12.8e}\n'
+                  '        residual:       {:12.8e}'.format(ll, residual))
+
+        rmse = self.leastsq_for_normalization_factor(x, intensity, stdout)
+        param = self.export_param()
+
+        run_info = {
+            'total_iter': total_iter,
+            'total_time': t_tot,
+            'time/iter': t_tot / max(total_iter, 1),
+            'LL': ll,
+            'LL_hist': list(ll_hist),
+            'LL_residual': residual,
+            'LL_residual_hist': list(res_hist),
+            'RMSE': rmse,
+        }
+        if stdout:
+            print('Estimated model parameters and scores are following:')
+            self.print_param_summary(param)
+            print('   LL:      {:12.8e}\n'
+                  '   RMSE:     {:12.8e}\n'.format(run_info['LL'], run_info['RMSE']))
+        return run_info
+
+    def _adapted_em_python(self, x, intensity, max_iter, r_eps, stdout):
         start = time.time()
         it_tot = 0
         t_tot = 0
@@ -438,8 +552,6 @@ class EMCore:
                   '        residual:       {:12.8e}'.format(ll, residual))
 
         rmse = self.leastsq_for_normalization_factor(x, intensity, stdout)
-        # self.N_tot = np.sum(intensity)
-        # rmse = np.sqrt(np.average((intensity - self.predict(x) * self.N_tot)**2))
         param = self.export_param()
 
         run_info = {
@@ -491,32 +603,28 @@ class EMCore:
         return
 
     def leastsq_for_normalization_factor(self, x, intensity, stdout):
-        print('<< Optimizing normalization factor by using least square method. >>')
-
-        def model(x, param):
-            return self.predict(x) * param
-
-        def residual(param, x, y):
-            return y - model(x, param)
-
-        init_param = np.abs(integrate.trapezoid(intensity, x))
-        print('init', init_param)
+        if stdout:
+            print('<< Optimizing normalization factor by exact linear least square. >>')
 
         start = time.time()
-        ls = optimize.least_squares(residual, init_param,
-                                    args=(x, intensity),
-                                    loss='linear'
-                                    )
-        self.N_tot = ls.x[0]
+        pred = self.predict(x)
+
+        denom = np.sum(pred ** 2)
+        if denom == 0:
+            self.N_tot = np.abs(integrate.trapezoid(intensity, x))
+        else:
+            self.N_tot = np.sum(intensity * pred) / denom
+
         self.N = list(self.pi * self.N_tot)
 
-        rmse = np.sqrt((ls['cost']) * 2.0 / x.size)
-        if ls["success"] == True:
-            print("   non-linear least-square optimization is successfully finished.")
+        # evaluate rmse
+        res = intensity - pred * self.N_tot
+        rmse = np.sqrt(np.sum(res ** 2) / x.size)
+
+        if stdout:
+            print("   exact linear least-square optimization is successfully finished.")
             print("            RMSE:      {:12.6e}\n"
                   "    Elapsed time:      {:12.6e} s\n".format(rmse, time.time() - start))
-        else:
-            print("   Warning: non-linear least-square optimization is failed.")
 
         return rmse
 

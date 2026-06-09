@@ -12,6 +12,7 @@ try:
     from EMPeaks.LorentzianMixture import LorentzianMixtureModel
     from EMPeaks.PseudoVoigtMixture import PseudoVoigtMixtureModel
     from EMPeaks.DoniachSunjicMixture import DoniachSunjicMixtureModel
+    from EMPeaks.VoigtMixture import VoigtMixtureModel
     from EMPeaks.TSDCMixture import TSDCMixtureModel
     EMPEAKS_AVAILABLE = True
 except ImportError:
@@ -20,6 +21,7 @@ except ImportError:
     LorentzianMixtureModel = None
     PseudoVoigtMixtureModel = None
     DoniachSunjicMixtureModel = None
+    VoigtMixtureModel = None
     TSDCMixtureModel = None
 
 
@@ -31,11 +33,13 @@ def init_application():
         st.session_state['BackgroundModel'] = 'none'
         st.session_state['TrialFrequency'] = 1
         st.session_state['ModelInstance'] = None
-        st.session_state['Threshold'] = 1e-8
+        st.session_state['Threshold'] = 1e-9
         st.session_state['MaxIteration'] = 1000
         st.session_state['Fitted'] = False
         st.session_state['Data'] = None
         st.session_state['FittingMethod'] = 'sampling'
+        st.session_state['TriggerOptimization'] = False
+        st.session_state['FitParam'] = None
         # TSDC-specific parameters
         st.session_state['TSDC_beta'] = 0.0833
         st.session_state['TSDC_T_min'] = 300
@@ -61,6 +65,8 @@ def init_model(K, x_min, x_max):
         return PseudoVoigtMixtureModel(K=K, x_min=x_min, x_max=x_max, background=background)
     elif model_type == 'DoniachSunjicMixture':
         return DoniachSunjicMixtureModel(K=K, x_min=x_min, x_max=x_max, background=background)
+    elif model_type == 'VoigtMixture':
+        return VoigtMixtureModel(K=K, x_min=x_min, x_max=x_max, background=background)
     elif model_type == 'TSDCMixture':
         return TSDCMixtureModel(
             K=K,
@@ -124,4 +130,5 @@ def refresh():
     """状態をリフレッシュ"""
     st.session_state['Fitted'] = False
     st.session_state['FitInfo'] = None
+    st.session_state['ModelInstance'] = None
     st.cache_data.clear()

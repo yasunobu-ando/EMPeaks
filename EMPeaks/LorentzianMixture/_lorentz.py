@@ -13,6 +13,8 @@ class Lorentzian:
         self.x_max = x_max
         self.gamma_min = gamma_min
         self.gamma_max = gamma_max
+        self.fix_x0 = False
+        self.fix_gamma = False
         self.init_model()
 
     def set_param(self, **param):
@@ -96,7 +98,10 @@ class Lorentzian:
             self.gamma = gamma
             self.x0 = x0
             return self._LL_gamma(x, intensity)
-        return optimize.brentq(_f, _interval_g[0], _interval_g[1])
+        try:
+            return optimize.brentq(_f, _interval_g[0], _interval_g[1])
+        except ValueError:
+            return self.gamma
 
     def maximum_likelihood_estimation(self, x, intensity, n_partition_x0=100):
         # for sparse modeling with Dirichlet prior with alpha less than 0.
@@ -143,20 +148,25 @@ class Lorentzian:
 
         sign = np.array([np.sign(_y[i + 1] * _y[i]) for i in range(_x.size - 1)])
         sect = np.where(sign == -1)[0]
-        _opt_x0 = [optimize.brentq(_f2, _x[i], _x[i + 1]) for i in sect[0:sect.size]]
+        _opt_x0 = []
+        for i in sect:
+            try:
+                _opt_x0.append(optimize.brentq(_f2, _x[i], _x[i + 1]))
+            except ValueError:
+                pass
         _opt_gamma = [self._opt_gamma(x0, _interval_gamma, x, intensity) for x0 in _opt_x0]
         for i in range(len(_opt_x0)):
             self.x0 = _opt_x0[i]
             self.gamma = _opt_gamma[i]
             _LL.append(self.log_likelihood(x, intensity))
 
-        if len(_opt_x0) is 0:
+        if len(_opt_x0) == 0:
             print("Maximum likelihood estimation is failed.")
             print("Reset parameters again.")
             self.x0 = np.random.uniform(self.x_min, self.x_max)
             self.gamma = np.random.uniform(self.gamma_min, self.gamma_max)
             return
-        elif len(_opt_x0) is not 1:
+        elif len(_opt_x0) != 1:
             print("More than one local minima are found as follows.")
             print(_opt_x0)
 
@@ -175,7 +185,10 @@ class Lorentzian:
         self.gamma = np.sqrt(2.0 * np.log(2.0) * np.sum(x ** 2 * intensity) / np.sum(intensity))
 
         init = [self.x0, self.gamma]
-        info = optimize.minimize(func_ll, x0=init, bounds=[(self.x_min, self.x_max), (0.1, 2000)], method='L-BFGS-B')
-        self.x0 = info['x'][0]
-        self.gamma = info['x'][1]
+        try:
+            info = optimize.minimize(func_ll, x0=init, bounds=[(self.x_min, self.x_max), (0.1, 2000)], method='L-BFGS-B')
+            self.x0 = info['x'][0]
+            self.gamma = info['x'][1]
+        except (ValueError, RuntimeError):
+            pass
         return

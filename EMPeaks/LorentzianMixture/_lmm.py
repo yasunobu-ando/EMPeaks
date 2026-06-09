@@ -25,6 +25,90 @@ class LorentzianMixtureModel(EMCore):
         self.gamma_max = gamma_max
         self.model[0:K] = [Lorentzian(x_min, x_max, gamma_min, gamma_max) for k in range(self.K)]
 
+    _BG_TYPE_MAP = {"none": 0, "uniform": 1, "squareroot": 2, "linear": 3}
+    _BG_RUST_SUPPORTED = {"none", "uniform", "squareroot", "linear"}
+
+    def adapted_em(self, x, intensity, max_iter, r_eps, stdout):
+        from EMPeaks.EMCore._backend import get_backend
+        if get_backend() == "rust" and self.background in self._BG_RUST_SUPPORTED:
+            return self._adapted_em_rust_lo(x, intensity, max_iter, r_eps, stdout)
+        return self._adapted_em_python(x, intensity, max_iter, r_eps, stdout)
+
+    def _adapted_em_rust_lo(self, x, intensity, max_iter, r_eps, stdout):
+        import empeaks_rust_core
+        import time
+
+        start = time.time()
+        print("<< Start fitting via Adapted EM Algorithm. [Rust backend / Lorentzian Phase 3] >>")
+
+        x_f64 = np.ascontiguousarray(x, dtype=np.float64)
+        int_f64 = np.ascontiguousarray(intensity, dtype=np.float64)
+
+        x0_arr = np.array([self.model[k].x0 for k in range(self.K)], dtype=np.float64)
+        gamma_arr = np.array([self.model[k].gamma for k in range(self.K)], dtype=np.float64)
+        pi_arr = np.array(self.pi[:self.K_all], dtype=np.float64)
+        da_arr = np.ascontiguousarray(self.Dirichlet_alpha[:self.K_all], dtype=np.float64)
+        fix_x0  = [bool(getattr(self.model[k], 'fix_x0',  False)) for k in range(self.K)]
+        fix_gamma = [bool(getattr(self.model[k], 'fix_gamma', False)) for k in range(self.K)]
+
+        bg_type = self._BG_TYPE_MAP.get(self.background, 0)
+        s_tri_in = float(self.model[-1].s_tri) if self.background == "linear" else 0.0
+
+        total_iter, ll_hist_np, res_hist_np, s_tri_out = empeaks_rust_core.run_lorentzian_em_loop(
+            x_f64, int_f64,
+            x0_arr, gamma_arr, pi_arr,
+            da_arr,
+            fix_x0, fix_gamma,
+            self.x_min, self.x_max,
+            max_iter, r_eps,
+            bg_type, s_tri_in,
+        )
+
+        for k in range(self.K):
+            self.model[k].x0 = float(x0_arr[k])
+            self.model[k].gamma = float(gamma_arr[k])
+        self.pi[:self.K_all] = pi_arr
+        if self.background == "linear":
+            self.model[-1].s_tri = s_tri_out
+            self.model[-1].s_uni = 1.0 - s_tri_out
+
+        ll_hist = list(ll_hist_np)
+        res_hist = list(res_hist_np)
+        ll = ll_hist[-1]
+        residual = res_hist[-1] if len(res_hist) > 1 else 0.0
+        t_tot = time.time() - start
+
+        if total_iter < max_iter:
+            print('Convergence is achieved at iter. {:3d}, elapsed time {:5.2f} s'
+                  .format(total_iter, t_tot))
+            print('   LogLikelihood:     {:12.8e}\n        residual:      {:12.8e}'
+                  .format(ll, residual))
+        else:
+            print('>>> Convergence is not achieved within {:3d} iterations, elapsed time: {:5.2f} s'
+                  .format(max_iter, t_tot))
+            print('   LogLikelihood:      {:12.8e}\n        residual:       {:12.8e}'
+                  .format(ll, residual))
+
+        rmse = self.leastsq_for_normalization_factor(x, intensity, stdout)
+        param = self.export_param()
+
+        run_info = {
+            'total_iter': total_iter,
+            'total_time': t_tot,
+            'time/iter': t_tot / max(total_iter, 1),
+            'LL': ll,
+            'LL_hist': ll_hist,
+            'LL_residual': residual,
+            'LL_residual_hist': res_hist,
+            'RMSE': rmse,
+        }
+        if stdout:
+            print('Estimated model parameters and scores are following:')
+            self.print_param_summary(param)
+            print('   LL:      {:12.8e}\n'
+                  '   RMSE:     {:12.8e}\n'.format(run_info['LL'], run_info['RMSE']))
+        return run_info
+
     def set_single_params(self, **param):
         # setting parameters for each single Gaussian model.
         param_set = {"x0", "gamma"}
