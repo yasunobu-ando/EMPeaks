@@ -3,12 +3,24 @@ EMPeaks GUI - Peak Fitting Application
 Streamlit-based GUI (EMPeaks-Deck Style)
 """
 
+import atexit
 import streamlit as st
 from module.data_constructor import data_constructor
 from module.model_constructor import model_constructor
 from module.fitting_board_constructor import fitting_board_constructor
 from module.utils import init_application
 from module.i18n import init_language, t
+
+
+def _cleanup():
+    try:
+        if "ModelInstance" in st.session_state:
+            st.session_state["ModelInstance"] = None
+    except Exception:
+        pass
+
+
+atexit.register(_cleanup)
 
 hide_st_style = """
 <style>
