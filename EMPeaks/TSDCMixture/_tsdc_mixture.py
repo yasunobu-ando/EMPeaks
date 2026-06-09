@@ -21,8 +21,8 @@ class TSDCMixtureModel(EMCore):
 
     """
     def __init__(self, K=2, beta=0.0833, T_min=300, T_max=900, Ea_min=0.05, Ea_max=3.0,
-                 background='none', k_ramp=0):
-        super().__init__(K=K, x_min=0, x_max=10, background=background, k_ramp=k_ramp)
+                 background='none', k_ramp=0, degree_spline=3, n_section=5):
+        super().__init__(K=K, x_min=0, x_max=10, background=background, k_ramp=k_ramp, degree_spline=degree_spline, n_section=n_section)
         self.beta = beta
         self.T_min = T_min
         self.T_max = T_max

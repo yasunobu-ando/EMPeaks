@@ -14,8 +14,8 @@ import time
 
 
 class GaussianMixtureModel(EMCore):
-    def __init__(self, K=2, x_min=-300, x_max=300, sigma_min=0.1, sigma_max=50, background='none', k_ramp=5):
-        super().__init__(K=K, x_min=x_min, x_max=x_max, background=background, k_ramp=k_ramp)
+    def __init__(self, K=2, x_min=-300, x_max=300, sigma_min=0.1, sigma_max=50, background='none', k_ramp=5, degree_spline=3, n_section=5):
+        super().__init__(K=K, x_min=x_min, x_max=x_max, background=background, k_ramp=k_ramp, degree_spline=degree_spline, n_section=n_section)
         self.sigma_min = sigma_min
         self.sigma_max = sigma_max
         self.model[0:K] = [Gaussian(x_min, x_max, sigma_min, sigma_max) for k in range(self.K)]

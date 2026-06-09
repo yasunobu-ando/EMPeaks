@@ -62,6 +62,11 @@ TRANSLATIONS = {
         "hwhm": "Half Width Half Maximum",
         "mixing_parameter": "mixing parameter",
         "asymmetry_parameter": "asymmetry parameter",
+        "bspline_parameters": "B-Spline Parameters",
+        "degree_spline": "Spline Degree",
+        "n_section": "Number of Sections",
+        "rampsum_parameters": "RampSum Parameters",
+        "k_ramp": "Ramp Segments",
         "same_axis_warning": "X and Y must be different columns.",
 
         # Fitting method
@@ -135,6 +140,11 @@ TRANSLATIONS = {
         "hwhm": "半値半幅",
         "mixing_parameter": "混合パラメータ",
         "asymmetry_parameter": "非対称パラメータ",
+        "bspline_parameters": "B-Spline パラメータ",
+        "degree_spline": "スプライン次数",
+        "n_section": "セクション数",
+        "rampsum_parameters": "RampSum パラメータ",
+        "k_ramp": "ランプセグメント数",
         "same_axis_warning": "X変数とY変数は異なる列を選択してください。",
 
         # Fitting method

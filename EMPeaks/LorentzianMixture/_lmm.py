@@ -19,8 +19,8 @@ class LorentzianMixtureModel(EMCore):
     K: mixture component of Lorentzian
     """
     def __init__(self, K=2, x_min=-300, x_max=300, gamma_min=0.1, gamma_max=500,
-                 background='none', k_ramp=0):
-        super().__init__(K=K, x_min=x_min, x_max=x_max, background=background, k_ramp=k_ramp)
+                 background='none', k_ramp=0, degree_spline=3, n_section=5):
+        super().__init__(K=K, x_min=x_min, x_max=x_max, background=background, k_ramp=k_ramp, degree_spline=degree_spline, n_section=n_section)
         self.gamma_min = gamma_min
         self.gamma_max = gamma_max
         self.model[0:K] = [Lorentzian(x_min, x_max, gamma_min, gamma_max) for k in range(self.K)]

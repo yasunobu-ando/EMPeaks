@@ -25,8 +25,8 @@ class VoigtMixtureModel(EMCore):
                  sigma_min=0.1, sigma_max=70,
                  gamma_min=0.1, gamma_max=70,
                  background='none', k_ramp=0,
-                 degree_spline=3, n_section=3):
-        super().__init__(K=K, x_min=x_min, x_max=x_max, background=background, k_ramp=k_ramp)
+                 degree_spline=3, n_section=5):
+        super().__init__(K=K, x_min=x_min, x_max=x_max, background=background, k_ramp=k_ramp, degree_spline=degree_spline, n_section=n_section)
         self.sigma_min = sigma_min
         self.sigma_max = sigma_max    
         self.gamma_min = gamma_min

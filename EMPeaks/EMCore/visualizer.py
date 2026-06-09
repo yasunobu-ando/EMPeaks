@@ -31,6 +31,7 @@ class Visualizer:
         K: int,
         background: str = 'none',
         k_ramp: int = 5,
+        n_spline_basis: int = 10,
         figsize: tuple = None,
         show: bool = True
     ):
@@ -72,6 +73,9 @@ class Visualizer:
             ax.plot(x, y, label=background)
         elif background == 'ramp_sum':
             y = np.sum([model[K+k].predict(x) * N[K+k] for k in range(k_ramp+2)], axis=0)
+            ax.plot(x, y, label=background)
+        elif background == 'b_spline':
+            y = np.sum([model[K + k].predict(x) * N[K + k] for k in range(n_spline_basis)], axis=0)
             ax.plot(x, y, label=background)
         elif background != 'none':
             ax.plot(x, model[-1].predict(x) * N[-1], label=background)

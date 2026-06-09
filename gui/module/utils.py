@@ -46,6 +46,10 @@ def init_application():
         st.session_state['TSDC_T_max'] = 900
         st.session_state['TSDC_Ea_min'] = 0.05
         st.session_state['TSDC_Ea_max'] = 3.0
+        # B-Spline specific parameters
+        st.session_state['degree_spline'] = 3
+        st.session_state['n_section'] = 5
+        st.session_state['k_ramp'] = 5
         st.session_state['init'] = True
 
 
@@ -57,16 +61,23 @@ def init_model(K, x_min, x_max):
     model_type = st.session_state['MixtureModel']
     background = st.session_state['BackgroundModel']
 
+    kwargs = {}
+    if background == 'b_spline':
+        kwargs['degree_spline'] = st.session_state.get('degree_spline', 3)
+        kwargs['n_section'] = st.session_state.get('n_section', 5)
+    elif background == 'ramp_sum':
+        kwargs['k_ramp'] = st.session_state.get('k_ramp', 5)
+
     if model_type == 'GaussianMixture':
-        return GaussianMixtureModel(K=K, x_min=x_min, x_max=x_max, background=background)
+        return GaussianMixtureModel(K=K, x_min=x_min, x_max=x_max, background=background, **kwargs)
     elif model_type == 'LorentzianMixture':
-        return LorentzianMixtureModel(K=K, x_min=x_min, x_max=x_max, background=background)
+        return LorentzianMixtureModel(K=K, x_min=x_min, x_max=x_max, background=background, **kwargs)
     elif model_type == 'PseudoVoigtMixture':
-        return PseudoVoigtMixtureModel(K=K, x_min=x_min, x_max=x_max, background=background)
+        return PseudoVoigtMixtureModel(K=K, x_min=x_min, x_max=x_max, background=background, **kwargs)
     elif model_type == 'DoniachSunjicMixture':
-        return DoniachSunjicMixtureModel(K=K, x_min=x_min, x_max=x_max, background=background)
+        return DoniachSunjicMixtureModel(K=K, x_min=x_min, x_max=x_max, background=background, **kwargs)
     elif model_type == 'VoigtMixture':
-        return VoigtMixtureModel(K=K, x_min=x_min, x_max=x_max, background=background)
+        return VoigtMixtureModel(K=K, x_min=x_min, x_max=x_max, background=background, **kwargs)
     elif model_type == 'TSDCMixture':
         return TSDCMixtureModel(
             K=K,
@@ -75,7 +86,8 @@ def init_model(K, x_min, x_max):
             T_max=st.session_state['TSDC_T_max'],
             Ea_min=st.session_state['TSDC_Ea_min'],
             Ea_max=st.session_state['TSDC_Ea_max'],
-            background=background
+            background=background,
+            **kwargs
         )
     return None
 

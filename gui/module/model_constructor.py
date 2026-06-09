@@ -4,7 +4,7 @@ from module.utils import init_model, refresh
 from module.i18n import t
 
 MODEL_LIST = ['GaussianMixture', 'LorentzianMixture', 'PseudoVoigtMixture', 'DoniachSunjicMixture', 'VoigtMixture', 'TSDCMixture']
-BACKGROUND_LIST = ['none', 'uniform', 'linear', 'squareroot', 'ramp_sum']
+BACKGROUND_LIST = ['none', 'uniform', 'linear', 'squareroot', 'ramp_sum', 'b_spline']
 FITTING_METHOD_STANDARD = ['sampling']
 FITTING_METHOD_TSDC = ['sampling', 'leastsq', 'leastsq_tau0', 'l2_div']
 
@@ -59,6 +59,26 @@ def model_constructor(db, x_variable):
             index=0,
         )
 
+        if st.session_state['BackgroundModel'] == 'b_spline':
+            st.sidebar.subheader(t("bspline_parameters"))
+            st.sidebar.number_input(
+                t("degree_spline"),
+                min_value=0, max_value=5, step=1,
+                key='degree_spline',
+            )
+            st.sidebar.number_input(
+                t("n_section"),
+                min_value=1, max_value=100, step=1,
+                key='n_section',
+            )
+        elif st.session_state['BackgroundModel'] == 'ramp_sum':
+            st.sidebar.subheader(t("rampsum_parameters"))
+            st.sidebar.number_input(
+                t("k_ramp"),
+                min_value=1, max_value=50, step=1,
+                key='k_ramp',
+            )
+
         # Fitting method selection
         method_list = FITTING_METHOD_TSDC if is_tsdc else FITTING_METHOD_STANDARD
         st.session_state['FittingMethod'] = st.sidebar.selectbox(
@@ -70,32 +90,34 @@ def model_constructor(db, x_variable):
         # TSDC-specific parameters
         if is_tsdc:
             st.sidebar.subheader(t("tsdc_parameters"))
-            st.session_state['TSDC_beta'] = st.sidebar.number_input(
+            st.sidebar.number_input(
                 t("tsdc_beta"),
-                value=st.session_state.get('TSDC_beta', 0.0833),
                 format="%.4f",
+                key='TSDC_beta'
             )
             tsdc_col = st.sidebar.columns(2)
-            st.session_state['TSDC_T_min'] = tsdc_col[0].number_input(
+            tsdc_col[0].number_input(
                 t("tsdc_t_min"),
-                value=st.session_state.get('TSDC_T_min', 300),
                 format="%d",
+                step=1,
+                key='TSDC_T_min'
             )
-            st.session_state['TSDC_T_max'] = tsdc_col[1].number_input(
+            tsdc_col[1].number_input(
                 t("tsdc_t_max"),
-                value=st.session_state.get('TSDC_T_max', 900),
                 format="%d",
+                step=1,
+                key='TSDC_T_max'
             )
             ea_col = st.sidebar.columns(2)
-            st.session_state['TSDC_Ea_min'] = ea_col[0].number_input(
+            ea_col[0].number_input(
                 t("tsdc_ea_min"),
-                value=st.session_state.get('TSDC_Ea_min', 0.05),
                 format="%.3f",
+                key='TSDC_Ea_min'
             )
-            st.session_state['TSDC_Ea_max'] = ea_col[1].number_input(
+            ea_col[1].number_input(
                 t("tsdc_ea_max"),
-                value=st.session_state.get('TSDC_Ea_max', 3.0),
                 format="%.3f",
+                key='TSDC_Ea_max'
             )
 
         # Input Trial Frequency
@@ -104,6 +126,7 @@ def model_constructor(db, x_variable):
             min_value=1,
             max_value=30,
             format="%d",
+            step=1,
             key='TrialFrequency',
         )
 

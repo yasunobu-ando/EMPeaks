@@ -5,6 +5,7 @@
 
 import numpy as np
 from scipy import stats, optimize #, integrate
+from scipy.interpolate import BSpline
 
 
 class UniformModel:
@@ -494,3 +495,42 @@ class RampModel:
         return
 
 
+class SplineBasisModel:
+    def __init__(self, x0, x1, degree_spline, n_section, basis_index):
+        if basis_index >= (n_section + degree_spline):
+            print("ERROR!!!!")
+            sys.exit(0)
+        if basis_index < 0:
+            print("ERROR!!!! Basis_index should be positive integer or zero.")
+            sys.exit(0)
+
+        self.x0 = x0
+        self.x1 = x1
+        self.x_scale = (self.x1 - self.x0) / (n_section)
+        #print(self.x0)
+
+        self.degree_spline = degree_spline
+        self.n_section = n_section
+        self.basis_index = basis_index
+        self.knot_vector = np.array([min(n_section,
+                                         max(0, i - degree_spline + self.basis_index))
+                                     for i in range(degree_spline + 2)]) * self.x_scale + self.x0
+        #print(self.knot_vector)
+        self.LL = 0.0
+
+        #print("*** SplineBasisModel for background ***")
+        #print("range of basis index is [0, {:})".format(n_section + degree_spline))
+
+    def predict(self, x):
+        type_index = len(set(self.knot_vector))
+        z = (type_index - 1) / (self.degree_spline + 1) * self.x_scale
+        b = BSpline.basis_element(self.knot_vector, extrapolate=False)
+        return np.nan_to_num(b(x)) / z
+
+    def _LL(self, x, weight):
+        t = np.log(self.predict(x))
+        self.LL = (t * weight).sum()
+        return self.LL
+
+    def maximum_likelihood_estimation(self, x, weight):
+        return
