@@ -149,12 +149,9 @@ def fitting_board_constructor(db, param):
                 bg_label = f"BG: {bg_type}"
                 bg_col = f"BG_{bg_type}"
 
-                if bg_type == 'ramp_sum':
-                    k_ramp = getattr(mi, 'k_ramp', 5)
-                    y_bg_arr = np.sum([mi.model[display_K + k].predict(x_data.values) * mi.pi[display_K + k] * mi.N_tot for k in range(k_ramp + 2)], axis=0)
-                elif bg_type == 'b_spline':
-                    n_spline_basis = getattr(mi, 'n_spline_basis', 0)
-                    y_bg_arr = np.sum([mi.model[display_K + k].predict(x_data.values) * mi.pi[display_K + k] * mi.N_tot for k in range(n_spline_basis)], axis=0)
+                if bg_type in ('ramp_sum', 'b_spline'):
+                    num_bg_models = mi.K_all - display_K
+                    y_bg_arr = np.sum([mi.model[display_K + k].predict(x_data.values) * mi.pi[display_K + k] * mi.N_tot for k in range(num_bg_models)], axis=0)
                 else:
                     y_bg_arr = mi.model[-1].predict(x_data.values) * mi.pi[-1] * mi.N_tot
 

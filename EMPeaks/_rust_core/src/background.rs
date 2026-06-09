@@ -4,6 +4,7 @@ pub const BG_NONE: u8 = 0;
 pub const BG_UNIFORM: u8 = 1;
 pub const BG_SQUAREROOT: u8 = 2;
 pub const BG_LINEAR: u8 = 3;
+pub const BG_SPLINE: u8 = 4;
 
 pub fn predict_inplace(bg_type: u8, x: &[f64], x_min: f64, x_max: f64, s_tri: f64, out: &mut [f64]) {
     match bg_type {

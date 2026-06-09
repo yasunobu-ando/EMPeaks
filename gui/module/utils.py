@@ -40,6 +40,7 @@ def init_application():
         st.session_state['FittingMethod'] = 'sampling'
         st.session_state['TriggerOptimization'] = False
         st.session_state['FitParam'] = None
+        st.session_state['DirichletAlpha'] = 0.5
         # TSDC-specific parameters
         st.session_state['TSDC_beta'] = 0.0833
         st.session_state['TSDC_T_min'] = 300
@@ -115,6 +116,15 @@ def run(model_instance, x_val, y_val, trial):
     elif fitting_method == 'l2_div':
         run_info = model_instance.l2_div(x_arr, y_arr, stdout=False)
         out_info = _wrap_single_run_info(run_info)
+    elif fitting_method == 'deterministic_annealing':
+        alpha = st.session_state.get('DirichletAlpha', 1.0)
+        model_instance.Dirichlet_alpha = np.ones(model_instance.K_all) * alpha
+        run_info = model_instance.deterministic_annealing(
+            x_arr, y_arr,
+            max_iter=st.session_state['MaxIteration'],
+            r_eps=st.session_state['Threshold'],
+        )
+        out_info = _wrap_da_info(run_info)
     else:
         out_info = model_instance.sampling(
             x=x_arr,
@@ -135,6 +145,17 @@ def _wrap_single_run_info(run_info):
         'RMSE_hist': np.array([run_info.get('RMSE', np.nan)]),
         'time_hist': np.array([run_info.get('total_time', np.nan)]),
         'iter_hist': np.array([run_info.get('total_iter', np.nan)]),
+    }
+
+
+def _wrap_da_info(run_info):
+    """deterministic_annealing の返値を fitting_board_constructor 互換に変換"""
+    return {
+        'index_best': len(run_info['LL_hist']) - 1,
+        'LL_hist':    run_info['LL_hist'],
+        'RMSE_hist':  run_info['RMSE_hist'],
+        'time_hist':  run_info['time_hist'],
+        'iter_hist':  run_info['iter_hist'],
     }
 
 

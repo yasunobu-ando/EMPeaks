@@ -5,7 +5,7 @@ from module.i18n import t
 
 MODEL_LIST = ['GaussianMixture', 'LorentzianMixture', 'PseudoVoigtMixture', 'DoniachSunjicMixture', 'VoigtMixture', 'TSDCMixture']
 BACKGROUND_LIST = ['none', 'uniform', 'linear', 'squareroot', 'ramp_sum', 'b_spline']
-FITTING_METHOD_STANDARD = ['sampling']
+FITTING_METHOD_STANDARD = ['sampling', 'deterministic_annealing']
 FITTING_METHOD_TSDC = ['sampling', 'leastsq', 'leastsq_tau0', 'l2_div']
 
 _THRESHOLD_SEQUENCE = [
@@ -86,6 +86,19 @@ def model_constructor(db, x_variable):
             method_list,
             index=0,
         )
+
+        # DA-specific parameters
+        if st.session_state['FittingMethod'] == 'deterministic_annealing':
+            st.sidebar.subheader(t("da_parameters"))
+            alpha = st.sidebar.number_input(
+                t("dirichlet_alpha"),
+                min_value=0.01,
+                step=0.1,
+                format="%.2f",
+                key='DirichletAlpha',
+            )
+            if alpha >= 1.0:
+                st.sidebar.warning(t("da_alpha_warning"))
 
         # TSDC-specific parameters
         if is_tsdc:

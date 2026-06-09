@@ -16,7 +16,7 @@ mod background;
 #[pyfunction]
 #[pyo3(signature = (x, intensity, mu, sigma, pi, dirichlet_alpha,
                     fix_mu, fix_sigma, max_iter, r_eps, x_min, x_max,
-                    bg_type=0u8, s_tri=0.0f64))]
+                    bg_type=0u8, s_tri=0.0f64, spline_basis_preds=None))]
 fn run_em_loop<'py>(
     py: Python<'py>,
     x: PyReadonlyArray1<'py, f64>,
@@ -31,6 +31,7 @@ fn run_em_loop<'py>(
     r_eps: f64,
     x_min: f64, x_max: f64,
     bg_type: u8, s_tri: f64,
+    spline_basis_preds: Option<Vec<Vec<f64>>>,
 ) -> PyResult<(usize, PyObject, PyObject, f64)> {
     let x_vec: Vec<f64>  = x.as_array().to_vec();
     let int_vec: Vec<f64> = intensity.as_array().to_vec();
@@ -39,13 +40,14 @@ fn run_em_loop<'py>(
     let mut sigma_vec: Vec<f64> = sigma.as_array().to_vec();
     let mut pi_vec: Vec<f64>    = pi.as_array().to_vec();
     let da_slice: Vec<f64>      = dirichlet_alpha.as_array().to_vec();
+    let sbp: Vec<Vec<f64>>      = spline_basis_preds.unwrap_or_default();
 
     let (total_iter, ll_hist, res_hist, s_tri_out) = py.allow_threads(|| {
         em_engine::run_em_loop(
             &x_vec, &int_vec,
             &mut mu_vec, &mut sigma_vec, &mut pi_vec,
             &da_slice, &fix_mu, &fix_sigma, max_iter, r_eps,
-            x_min, x_max, bg_type, s_tri,
+            x_min, x_max, bg_type, s_tri, &sbp,
         )
     });
 
@@ -224,7 +226,7 @@ fn tsdc_mle_lbfgsb(
 #[pyo3(signature = (x, intensity, x0, gamma_pv, eta, pi, dirichlet_alpha,
                     fix_x0, fix_gamma, fix_eta,
                     use_full_opt, x_min, x_max, gamma_min, gamma_max, max_iter, r_eps,
-                    bg_type=0u8, s_tri=0.0f64))]
+                    bg_type=0u8, s_tri=0.0f64, spline_basis_preds=None))]
 fn run_pv_em_loop<'py>(
     py: Python<'py>,
     x: PyReadonlyArray1<'py, f64>,
@@ -241,6 +243,7 @@ fn run_pv_em_loop<'py>(
     x_min: f64, x_max: f64, gamma_min: f64, gamma_max: f64,
     max_iter: usize, r_eps: f64,
     bg_type: u8, s_tri: f64,
+    spline_basis_preds: Option<Vec<Vec<f64>>>,
 ) -> PyResult<(usize, PyObject, PyObject, f64)> {
     let x_vec = x.as_array().to_vec();
     let int_vec = intensity.as_array().to_vec();
@@ -250,6 +253,7 @@ fn run_pv_em_loop<'py>(
     let mut gam_vec = gamma_pv.as_array().to_vec();
     let mut eta_vec = eta.as_array().to_vec();
     let mut pi_vec = pi.as_array().to_vec();
+    let sbp: Vec<Vec<f64>> = spline_basis_preds.unwrap_or_default();
 
     let (total_iter, ll_hist, res_hist, s_tri_out) = py.allow_threads(|| {
         em_engine::run_pv_em_loop(
@@ -257,7 +261,7 @@ fn run_pv_em_loop<'py>(
             &mut x0_vec, &mut gam_vec, &mut eta_vec, &mut pi_vec,
             &da_vec, &fix_x0, &fix_gamma, &fix_eta, use_full_opt,
             x_min, x_max, gamma_min, gamma_max,
-            max_iter, r_eps, bg_type, s_tri,
+            max_iter, r_eps, bg_type, s_tri, &sbp,
         )
     });
 
@@ -274,7 +278,8 @@ fn run_pv_em_loop<'py>(
 #[pyfunction]
 #[pyo3(signature = (x, intensity, x0, gamma_lo, pi, dirichlet_alpha,
                     fix_x0, fix_gamma,
-                    x_min, x_max, max_iter, r_eps, bg_type=0u8, s_tri=0.0f64))]
+                    x_min, x_max, max_iter, r_eps, bg_type=0u8, s_tri=0.0f64,
+                    spline_basis_preds=None))]
 fn run_lorentzian_em_loop<'py>(
     py: Python<'py>,
     x: PyReadonlyArray1<'py, f64>,
@@ -288,6 +293,7 @@ fn run_lorentzian_em_loop<'py>(
     x_min: f64, x_max: f64,
     max_iter: usize, r_eps: f64,
     bg_type: u8, s_tri: f64,
+    spline_basis_preds: Option<Vec<Vec<f64>>>,
 ) -> PyResult<(usize, PyObject, PyObject, f64)> {
     let x_vec = x.as_array().to_vec();
     let int_vec = intensity.as_array().to_vec();
@@ -296,13 +302,14 @@ fn run_lorentzian_em_loop<'py>(
     let mut x0_vec = x0.as_array().to_vec();
     let mut gam_vec = gamma_lo.as_array().to_vec();
     let mut pi_vec = pi.as_array().to_vec();
+    let sbp: Vec<Vec<f64>> = spline_basis_preds.unwrap_or_default();
 
     let (total_iter, ll_hist, res_hist, s_tri_out) = py.allow_threads(|| {
         em_engine::run_lorentzian_em_loop(
             &x_vec, &int_vec,
             &mut x0_vec, &mut gam_vec, &mut pi_vec,
             &da_vec, &fix_x0, &fix_gamma, x_min, x_max,
-            max_iter, r_eps, bg_type, s_tri,
+            max_iter, r_eps, bg_type, s_tri, &sbp,
         )
     });
 
@@ -319,7 +326,7 @@ fn run_lorentzian_em_loop<'py>(
 #[pyo3(signature = (x, intensity, x0, gamma_ds, alpha, pi, dirichlet_alpha,
                     fix_x0, fix_gamma, fix_alpha,
                     x_min, x_max, gamma_min, gamma_max, alpha_min, alpha_max, max_iter, r_eps,
-                    bg_type=0u8, s_tri=0.0f64))]
+                    bg_type=0u8, s_tri=0.0f64, spline_basis_preds=None))]
 fn run_ds_em_loop<'py>(
     py: Python<'py>,
     x: PyReadonlyArray1<'py, f64>,
@@ -336,6 +343,7 @@ fn run_ds_em_loop<'py>(
     alpha_min: f64, alpha_max: f64,
     max_iter: usize, r_eps: f64,
     bg_type: u8, s_tri: f64,
+    spline_basis_preds: Option<Vec<Vec<f64>>>,
 ) -> PyResult<(usize, PyObject, PyObject, f64)> {
     let x_vec = x.as_array().to_vec();
     let int_vec = intensity.as_array().to_vec();
@@ -345,6 +353,7 @@ fn run_ds_em_loop<'py>(
     let mut gam_vec = gamma_ds.as_array().to_vec();
     let mut alp_vec = alpha.as_array().to_vec();
     let mut pi_vec = pi.as_array().to_vec();
+    let sbp: Vec<Vec<f64>> = spline_basis_preds.unwrap_or_default();
 
     let (total_iter, ll_hist, res_hist, s_tri_out) = py.allow_threads(|| {
         em_engine::run_ds_em_loop(
@@ -352,7 +361,7 @@ fn run_ds_em_loop<'py>(
             &mut x0_vec, &mut gam_vec, &mut alp_vec, &mut pi_vec,
             &da_vec, &fix_x0, &fix_gamma, &fix_alpha,
             x_min, x_max, gamma_min, gamma_max, alpha_min, alpha_max,
-            max_iter, r_eps, bg_type, s_tri,
+            max_iter, r_eps, bg_type, s_tri, &sbp,
         )
     });
 
@@ -370,7 +379,7 @@ fn run_ds_em_loop<'py>(
 #[pyo3(signature = (t, intensity, ea, tau0, tp, pi, dirichlet_alpha,
                     fix_ea, fix_tp,
                     beta, ea_min, ea_max, t_min, t_max, max_iter, r_eps,
-                    bg_type=0u8, s_tri=0.0f64))]
+                    bg_type=0u8, s_tri=0.0f64, spline_basis_preds=None))]
 fn run_tsdc_em_loop<'py>(
     py: Python<'py>,
     t: PyReadonlyArray1<'py, f64>,
@@ -386,6 +395,7 @@ fn run_tsdc_em_loop<'py>(
     ea_min: f64, ea_max: f64, t_min: f64, t_max: f64,
     max_iter: usize, r_eps: f64,
     bg_type: u8, s_tri: f64,
+    spline_basis_preds: Option<Vec<Vec<f64>>>,
 ) -> PyResult<(usize, PyObject, PyObject, f64)> {
     let t_vec = t.as_array().to_vec();
     let int_vec = intensity.as_array().to_vec();
@@ -395,6 +405,7 @@ fn run_tsdc_em_loop<'py>(
     let mut tau0_vec = tau0.as_array().to_vec();
     let mut tp_vec = tp.as_array().to_vec();
     let mut pi_vec = pi.as_array().to_vec();
+    let sbp: Vec<Vec<f64>> = spline_basis_preds.unwrap_or_default();
 
     let (total_iter, ll_hist, res_hist, s_tri_out) = py.allow_threads(|| {
         em_engine::run_tsdc_em_loop(
@@ -402,7 +413,7 @@ fn run_tsdc_em_loop<'py>(
             &mut ea_vec, &mut tau0_vec, &mut tp_vec, &mut pi_vec,
             &da_vec, &fix_ea, &fix_tp, beta,
             ea_min, ea_max, t_min, t_max,
-            max_iter, r_eps, bg_type, s_tri,
+            max_iter, r_eps, bg_type, s_tri, &sbp,
         )
     });
 
@@ -420,7 +431,7 @@ fn run_tsdc_em_loop<'py>(
 #[pyo3(signature = (x, intensity, x0, sigma_v, gamma_v, pi, dirichlet_alpha,
                     fix_x0, fix_sigma, fix_gamma,
                     x_min, x_max, sigma_min, sigma_max, gamma_min, gamma_max,
-                    max_iter, r_eps, bg_type=0u8, s_tri=0.0f64))]
+                    max_iter, r_eps, bg_type=0u8, s_tri=0.0f64, spline_basis_preds=None))]
 fn run_voigt_em_loop<'py>(
     py: Python<'py>,
     x: PyReadonlyArray1<'py, f64>,
@@ -438,6 +449,7 @@ fn run_voigt_em_loop<'py>(
     gamma_min: f64, gamma_max: f64,
     max_iter: usize, r_eps: f64,
     bg_type: u8, s_tri: f64,
+    spline_basis_preds: Option<Vec<Vec<f64>>>,
 ) -> PyResult<(usize, PyObject, PyObject, f64)> {
     let x_vec = x.as_array().to_vec();
     let int_vec = intensity.as_array().to_vec();
@@ -447,6 +459,7 @@ fn run_voigt_em_loop<'py>(
     let mut sig_vec = sigma_v.as_array().to_vec();
     let mut gam_vec = gamma_v.as_array().to_vec();
     let mut pi_vec = pi.as_array().to_vec();
+    let sbp: Vec<Vec<f64>> = spline_basis_preds.unwrap_or_default();
 
     let (total_iter, ll_hist, res_hist, s_tri_out) = py.allow_threads(|| {
         em_engine::run_voigt_em_loop(
@@ -454,7 +467,7 @@ fn run_voigt_em_loop<'py>(
             &mut x0_vec, &mut sig_vec, &mut gam_vec, &mut pi_vec,
             &da_vec, &fix_x0, &fix_sigma, &fix_gamma,
             x_min, x_max, sigma_min, sigma_max, gamma_min, gamma_max,
-            max_iter, r_eps, bg_type, s_tri,
+            max_iter, r_eps, bg_type, s_tri, &sbp,
         )
     });
 

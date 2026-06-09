@@ -72,6 +72,11 @@ TRANSLATIONS = {
         # Fitting method
         "fitting_method": "Fitting Method",
 
+        # DA-specific
+        "da_parameters": "DA Parameters",
+        "dirichlet_alpha": "Dirichlet Alpha",
+        "da_alpha_warning": "Alpha ≥ 1: no sparsity. For component selection, use 0 < α < 1.",
+
         # TSDC-specific
         "tsdc_parameters": "TSDC Parameters",
         "tsdc_beta": "Heating rate β [K/s]",
@@ -149,6 +154,11 @@ TRANSLATIONS = {
 
         # Fitting method
         "fitting_method": "フィッティング手法",
+
+        # DA-specific
+        "da_parameters": "DAパラメータ",
+        "dirichlet_alpha": "Dirichlet Alpha",
+        "da_alpha_warning": "Alpha ≥ 1: スパース化なし。コンポーネント選択には 0 < α < 1 を推奨。",
 
         # TSDC-specific
         "tsdc_parameters": "TSDCパラメータ",

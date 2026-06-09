@@ -14,9 +14,9 @@ from EMPeaks.EMCore.exceptions import BackgroundTypeError
 
 class BackgroundFactory:
     """バックグラウンドモデルを生成するファクトリクラス
-    
+
     バックグラウンドモデルの種類に応じて適切なモデルインスタンスを生成します。
-    
+
     Attributes:
         x_min: X軸の最小値
         x_max: X軸の最大値
@@ -25,9 +25,12 @@ class BackgroundFactory:
         n_section: SplineBasisModelの区間分割数
         basis_index: SplineBasisModelのインデックス. 0以上, degree_spline+n_sectiion以下
     """
-    
+
     # 対応するバックグラウンドタイプ
     SUPPORTED_TYPES = ('none', 'uniform', 'squareroot', 'linear', 'ramp_sum', 'b_spline')
+
+    # Rust bg_type 整数マッピング（全モデル共通の正規定義）
+    BG_TYPE_MAP = {"none": 0, "uniform": 1, "squareroot": 2, "linear": 3, "b_spline": 4}
     
     def __init__(self, x_min: float, x_max: float, k_ramp: int = 5,
                  degree_spline: int = 3, n_section: int = 5):

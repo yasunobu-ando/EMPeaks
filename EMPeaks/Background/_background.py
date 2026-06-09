@@ -498,11 +498,11 @@ class RampModel:
 class SplineBasisModel:
     def __init__(self, x0, x1, degree_spline, n_section, basis_index):
         if basis_index >= (n_section + degree_spline):
-            print("ERROR!!!!")
-            sys.exit(0)
+            raise ValueError(
+                f"basis_index {basis_index} out of range [0, {n_section + degree_spline})"
+            )
         if basis_index < 0:
-            print("ERROR!!!! Basis_index should be positive integer or zero.")
-            sys.exit(0)
+            raise ValueError(f"basis_index must be non-negative, got {basis_index}")
 
         self.x0 = x0
         self.x1 = x1

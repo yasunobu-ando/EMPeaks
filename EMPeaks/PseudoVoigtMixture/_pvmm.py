@@ -4,12 +4,8 @@
 
 from EMPeaks.PseudoVoigtMixture._pseudo_voigt import PseudoVoigt
 from EMPeaks.EMCore._em_core import EMCore
-from EMPeaks.Background import UniformModel, SquareRootModel, LinearModel, TriangleModel, RampModel
-from scipy import integrate
-from scipy import optimize
 import matplotlib.pyplot as plt
 import numpy as np
-import copy
 import time
 
 
@@ -28,8 +24,7 @@ class PseudoVoigtMixtureModel(EMCore):
         self.gamma_max = gamma_max
         self.model[0:K] = [PseudoVoigt(x_min, x_max, gamma_min, gamma_max) for k in range(self.K)]
 
-    _BG_TYPE_MAP = {"none": 0, "uniform": 1, "squareroot": 2, "linear": 3}
-    _BG_RUST_SUPPORTED = {"none", "uniform", "squareroot", "linear"}
+    _BG_RUST_SUPPORTED = {"none", "uniform", "squareroot", "linear", "b_spline"}
 
     def adapted_em(self, x, intensity, max_iter, r_eps, stdout):
         from EMPeaks.EMCore._backend import get_backend
@@ -56,8 +51,9 @@ class PseudoVoigtMixtureModel(EMCore):
         fix_gamma = [bool(getattr(self.model[k], 'fix_gamma', False)) for k in range(self.K)]
         fix_eta = [bool(getattr(self.model[k], 'fix_eta',  False)) for k in range(self.K)]
 
-        bg_type = self._BG_TYPE_MAP.get(self.background, 0)
+        bg_type = self._bg_type_int()
         s_tri_in = float(self.model[-1].s_tri) if self.background == "linear" else 0.0
+        extra_kw = self._build_rust_extra_kw(x_f64)
 
         total_iter, ll_hist_np, res_hist_np, s_tri_out = empeaks_rust_core.run_pv_em_loop(
             x_f64, int_f64,
@@ -68,6 +64,7 @@ class PseudoVoigtMixtureModel(EMCore):
             self.x_min, self.x_max, self.gamma_min, self.gamma_max,
             max_iter, r_eps,
             bg_type, s_tri_in,
+            **extra_kw,
         )
 
         for k in range(self.K):
