@@ -1,0 +1,77 @@
+name: Build and Release
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+
+jobs:
+  build:
+    name: Build [${{ matrix.platform.name }}]
+    runs-on: ${{ matrix.platform.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        platform:
+          - { name: linux-x86_64,     runner: ubuntu-latest,  target: x86_64,                  manylinux: auto }
+          - { name: macos-universal2, runner: macos-latest,   target: universal2-apple-darwin, manylinux: ''   }
+          - { name: windows-x64,      runner: windows-latest, target: x64,                     manylinux: ''   }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: PyO3/maturin-action@v1
+        with:
+          target: ${{ matrix.platform.target }}
+          manylinux: ${{ matrix.platform.manylinux }}
+          command: build
+          args: --release --strip
+      - uses: actions/upload-artifact@v4
+        with:
+          name: wheels-${{ matrix.platform.name }}
+          path: target/wheels/*.whl
+
+  sdist:
+    name: Build sdist
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: PyO3/maturin-action@v1
+        with:
+          command: sdist
+          args: --out dist
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sdist
+          path: dist/*.tar.gz
+
+  release:
+    name: Release to yasunobu-ando/EMPeaks
+    needs: [build, sdist]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Push code and tag to private repo
+        env:
+          PRIVATE_REPO_TOKEN: ${{ secrets.PRIVATE_REPO_TOKEN }}
+        run: |
+          git remote add private https://x-access-token:${PRIVATE_REPO_TOKEN}@github.com/yasunobu-ando/EMPeaks.git
+          git push private HEAD:master --force
+          git push private ${{ github.ref }} --force
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.PRIVATE_REPO_TOKEN }}
+        run: |
+          gh release create ${{ github.ref_name }} \
+            --repo yasunobu-ando/EMPeaks \
+            --title "EMPeaks ${{ github.ref_name }}" \
+            --generate-notes \
+            dist/*
