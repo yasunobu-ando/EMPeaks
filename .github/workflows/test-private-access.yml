@@ -1,0 +1,39 @@
+name: Test Private Repo Access
+
+on:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check token is set
+        env:
+          PRIVATE_REPO_TOKEN: ${{ secrets.PRIVATE_REPO_TOKEN }}
+        run: |
+          if [ -z "$PRIVATE_REPO_TOKEN" ]; then
+            echo "::error::PRIVATE_REPO_TOKEN is empty or not set"
+            exit 1
+          fi
+          echo "Token is set (length: ${#PRIVATE_REPO_TOKEN})"
+
+      - name: Check read access (git ls-remote)
+        env:
+          PRIVATE_REPO_TOKEN: ${{ secrets.PRIVATE_REPO_TOKEN }}
+        run: |
+          git ls-remote https://x-access-token:${PRIVATE_REPO_TOKEN}@github.com/yasunobu-ando/EMPeaks.git HEAD
+          echo "Read access: OK"
+
+      - name: Check write permission (GitHub API)
+        env:
+          PRIVATE_REPO_TOKEN: ${{ secrets.PRIVATE_REPO_TOKEN }}
+        run: |
+          push_perm=$(curl -s -H "Authorization: token ${PRIVATE_REPO_TOKEN}" \
+            https://api.github.com/repos/yasunobu-ando/EMPeaks | \
+            python3 -c "import sys, json; print(json.load(sys.stdin).get('permissions', {}).get('push', 'unknown'))")
+          echo "Push permission: ${push_perm}"
+          if [ "${push_perm}" != "True" ] && [ "${push_perm}" != "true" ]; then
+            echo "::error::Token does not have push permission to yasunobu-ando/EMPeaks"
+            exit 1
+          fi
+          echo "Write access: OK"
