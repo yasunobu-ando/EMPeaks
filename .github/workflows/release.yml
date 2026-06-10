@@ -26,11 +26,13 @@ jobs:
           target: ${{ matrix.platform.target }}
           manylinux: ${{ matrix.platform.manylinux }}
           command: build
-          args: --release --strip
+          args: --release --strip --out dist
+          before-script-linux: |
+            yum install -y clang || dnf install -y clang
       - uses: actions/upload-artifact@v4
         with:
           name: wheels-${{ matrix.platform.name }}
-          path: target/wheels/*.whl
+          path: dist/*.whl
 
   sdist:
     name: Build sdist
