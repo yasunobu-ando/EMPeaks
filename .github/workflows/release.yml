@@ -5,9 +5,6 @@ on:
     tags:
       - 'v*.*.*'
 
-env:
-  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
-
 jobs:
   build:
     name: Build [${{ matrix.platform.name }}]
@@ -16,11 +13,11 @@ jobs:
       fail-fast: false
       matrix:
         platform:
-          - { name: linux-x86_64,     runner: ubuntu-latest,  target: x86_64,                  manylinux: auto }
+          - { name: linux-x86_64,     runner: ubuntu-latest,  target: x86_64,                  manylinux: 2_28 }
           - { name: macos-universal2, runner: macos-latest,   target: universal2-apple-darwin, manylinux: ''   }
           - { name: windows-x64,      runner: windows-latest, target: x64,                     manylinux: ''   }
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: PyO3/maturin-action@v1
         with:
           target: ${{ matrix.platform.target }}
@@ -29,7 +26,7 @@ jobs:
           args: --release --strip --out dist
           before-script-linux: |
             yum install -y clang || dnf install -y clang
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v5
         with:
           name: wheels-${{ matrix.platform.name }}
           path: dist/*.whl
@@ -38,12 +35,12 @@ jobs:
     name: Build sdist
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: PyO3/maturin-action@v1
         with:
           command: sdist
           args: --out dist
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v5
         with:
           name: sdist
           path: dist/*.tar.gz
@@ -53,12 +50,12 @@ jobs:
     needs: [build, sdist]
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           fetch-depth: 0
 
       - name: Download all artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v5
         with:
           path: dist
           merge-multiple: true
