@@ -4,7 +4,7 @@ build-backend = "maturin"
 
 [project]
 name = "empeaks"
-version = "2.1.0"
+version = "3.0.0"
 authors = [{name = "Yasunobu Ando", email = "yasunobu.ando@cls.iir.isct.ac.jp"}]
 description = "high-throughput spectrum peak modeling tools by using Spectrum adapted EM algorithms"
 readme = "README.md"
