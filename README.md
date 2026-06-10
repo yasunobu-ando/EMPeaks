@@ -14,7 +14,7 @@ Version 3.0.x brings major updates to EMPeaks, focusing on performance and usabi
 ### Installation
 
 **1. Install via Wheel from GitHub Releases (Recommended for v3.0.x)**
-We provide pre-compiled wheel (`.whl`) files for Python 3.11 and later. Download the appropriate `.whl` file for your operating system from the [GitHub Releases](https://github.com/TeamUndeux/EMPeaks/releases) page. Then navigate to the downloaded directory in your terminal and install it using pip:
+We provide pre-compiled wheel (`.whl`) files for Python 3.11 and later. Download the appropriate `.whl` file for your operating system from the [GitHub Releases](https://github.com/yasunobu-ando/EMPeaks/releases) page. Then navigate to the downloaded directory in your terminal and install it using pip:
 
 * **Windows (x64)**
   ```bash
