@@ -15,7 +15,6 @@ lbfgsb-rs-pure  = "0.1.1"
 rayon   = "1.10"
 roots   = "0.0.8"
 xsf     = "0.5.1"
-lbfgsb = "0.1.0"
 
 
 [profile.release]
