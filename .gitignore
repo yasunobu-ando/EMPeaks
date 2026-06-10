@@ -40,3 +40,7 @@ release_gil.py
 update_em_engine.py
 test_*.py
 !tests/test_*.py
+*.log
+tmp_*.txt
+__marimo__/
+**/.ipynb_checkpoints/
