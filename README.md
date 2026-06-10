@@ -6,6 +6,47 @@ Please refer the following paper when using this package:
 [Sci. Tech. Adv. Mater. 20, 733-735 (2019).](https://www.tandfonline.com/doi/full/10.1080/14686996.2019.1620123);
 [Sci. Tech. Adv. Mater. method 1, 45 (2021).](https://www.tandfonline.com/doi/abs/10.1080/27660400.2021.1899449)
 
+## Version 3.0.x (Backend in Rust & GUI Application)
+Version 3.0.x brings major updates to EMPeaks, focusing on performance and usability:
+* **Backend in Rust**: The core algorithms have been rewritten in Rust, achieving substantial speedups in execution time and enabling more efficient high-throughput analysis.
+* **GUI Application**: We have developed a new, user-friendly GUI application. It provides an intuitive environment for interactive data visualization, parameter tuning, and peak fitting.
+
+### Installation
+
+**1. Install via Wheel from GitHub Releases (Recommended for v3.0.x)**
+We provide pre-compiled wheel (`.whl`) files for Python 3.11. Download the appropriate `.whl` file for your operating system from the [GitHub Releases](https://github.com/TeamUndeux/EMPeaks/releases) page. Then navigate to the downloaded directory in your terminal and install it using pip:
+
+* **Windows (x64)**
+  ```bash
+  pip install empeaks-3.0.0-cp311-cp311-win_amd64.whl
+  ```
+
+* **macOS (Universal2 for Intel & Apple Silicon)**
+  ```bash
+  pip install empeaks-3.0.0-cp311-cp311-macosx_*_universal2.whl
+  ```
+
+* **Linux (x86_64)**
+  ```bash
+  pip install empeaks-3.0.0-cp311-cp311-manylinux_*_x86_64.whl
+  ```
+
+**2. Install via PyPI (Currently Outdated)**
+
+You can also install EMPeaks from PyPI using pip:
+```bash
+pip install EMPeaks
+```
+
+> [!WARNING]
+> Due to a current issue with PyPI, the `pip install EMPeaks` command may install an older version, and updating to v3.0.x via PyPI is temporarily unavailable. Please use the wheel installation from GitHub Releases to get the latest 3.0.x features.
+
+### Usage
+After installation, you can launch the new GUI application by running the following command:
+```bash
+empeaks deck
+```
+
 ## Version 2.2.x (Deterministic Annealing & TSDC mixture model)
 In version 2.2.x, fitting model of Thermally Stimulated Depolarization Current(TSDC) 
 and Deterministic Annealing with Dirichlet prior for mixing ratio estimation is implemented.
@@ -115,4 +156,4 @@ gmm.plot(x, y)
 
 ---------------
 &copy; 2020-2023 National Institute of Advanced Industrial Science and Technology (AIST)\
-&copy; 2024-2025 Yasunobu Ando in Science Tokyo
+&copy; 2024-2026 Yasunobu Ando in Science Tokyo
